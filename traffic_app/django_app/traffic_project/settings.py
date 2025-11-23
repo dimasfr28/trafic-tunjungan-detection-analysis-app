@@ -48,7 +48,7 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 
-FASTAPI_URL = os.environ.get('FASTAPI_URL', 'http://localhost:8001')
+FASTAPI_URL = os.environ.get('FASTAPI_URL', 'http://localhost:8002')
 ASSETS_DIR = BASE_DIR / 'assets'
 CSV_PATH = ASSETS_DIR / 'excel' / 'vehicle_counts_fuzzy_clustered.csv'
 VIDEO_DIR = ASSETS_DIR / 'video' / 'input_vidio'

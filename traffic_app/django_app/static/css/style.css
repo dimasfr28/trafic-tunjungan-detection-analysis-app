@@ -1,8 +1,12 @@
 /* Reset & Base */
-* {
+*,
+*::before,
+*::after {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 :root {
@@ -16,14 +20,32 @@
     --light: #f8fafc;
     --gray: #94a3b8;
     --border: #e2e8f0;
+    /* Font sizes dengan rem untuk konsistensi */
+    --font-xs: 0.75rem;
+    --font-sm: 0.875rem;
+    --font-base: 1rem;
+    --font-lg: 1.125rem;
+    --font-xl: 1.25rem;
+    --font-2xl: 1.5rem;
+    --font-3xl: 2rem;
+    --font-4xl: 2.5rem;
+}
+
+html {
+    font-size: 16px; /* Base font size tetap */
+    -webkit-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
 }
 
 body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    background-attachment: fixed;
     color: #f1f5f9;
     min-height: 100vh;
     line-height: 1.6;
+    font-size: var(--font-base);
+    letter-spacing: -0.01em;
 }
 
 /* Navbar */
@@ -32,17 +54,20 @@ body {
     justify-content: space-between;
     align-items: center;
     padding: 1rem 2rem;
-    background: rgba(15, 23, 42, 0.9);
+    background: rgba(15, 23, 42, 0.95);
+    -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    position: -webkit-sticky;
     position: sticky;
     top: 0;
     z-index: 100;
 }
 
 .nav-brand .logo {
-    font-size: 1.5rem;
+    font-size: var(--font-2xl);
     font-weight: 700;
+    color: #3b82f6; /* Fallback untuk browser lama */
     background: linear-gradient(135deg, #3b82f6, #8b5cf6);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -230,8 +255,18 @@ body {
 .video-wrapper {
     position: relative;
     width: 100%;
-    aspect-ratio: 16/9;
+    /* Fallback untuk browser tanpa aspect-ratio */
+    height: 0;
+    padding-bottom: 56.25%; /* 16:9 ratio */
     background: #000;
+}
+
+@supports (aspect-ratio: 16/9) {
+    .video-wrapper {
+        height: auto;
+        padding-bottom: 0;
+        aspect-ratio: 16/9;
+    }
 }
 
 .video-frame {
@@ -242,7 +277,10 @@ body {
 
 .video-loading {
     position: absolute;
-    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -516,7 +554,10 @@ body {
 
 .file-upload input {
     position: absolute;
-    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
     opacity: 0;
     cursor: pointer;
 }
@@ -606,11 +647,21 @@ body {
 
 /* Video Output */
 .video-output-container {
+    position: relative;
     width: 100%;
-    aspect-ratio: 16/9;
+    height: 0;
+    padding-bottom: 56.25%; /* 16:9 fallback */
     background: #000;
     border-radius: 8px;
     overflow: hidden;
+}
+
+@supports (aspect-ratio: 16/9) {
+    .video-output-container {
+        height: auto;
+        padding-bottom: 0;
+        aspect-ratio: 16/9;
+    }
 }
 
 .video-placeholder {
