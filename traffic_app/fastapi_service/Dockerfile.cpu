@@ -1,0 +1,34 @@
+FROM python:3.10-slim
+
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+
+# Install CPU-only versions
+RUN pip3 install --no-cache-dir \
+    fastapi==0.104.1 \
+    uvicorn==0.24.0 \
+    python-multipart==0.0.6 \
+    opencv-python-headless==4.8.1.78 \
+    numpy==1.24.3 \
+    aiofiles==23.2.1 \
+    torch --index-url https://download.pytorch.org/whl/cpu \
+    torchvision --index-url https://download.pytorch.org/whl/cpu \
+    ultralytics==8.0.200
+
+COPY . .
+
+EXPOSE 8001
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]

@@ -1,0 +1,12 @@
+Train on Kaggle using GPU T4 x2
+
+Default Epochs = 300
+Early Stopping = 100
+
+YOLO11s (19.2 MB) = EarlyStopping: Training stopped early as no improvement observed in last 100 epochs. Best results observed at epoch 131, best model saved as best.pt. 231 epochs completed in 2.345 hours.
+
+YOLO11n (5.5 MB) = 300 epochs completed in 1.827 hours.
+
+YOLOv8s (22.5 MB) = EarlyStopping: Training stopped early as no improvement observed in last 100 epochs. Best results observed at epoch 88, best model saved as best.pt. 188 epochs completed in 1.867 hours.
+
+YOLOv8n (6.3 MB) = EarlyStopping: Training stopped early as no improvement observed in last 100 epochs. Best results observed at epoch 170, best model saved as best.pt. 270 epochs completed in 1.516 hours.

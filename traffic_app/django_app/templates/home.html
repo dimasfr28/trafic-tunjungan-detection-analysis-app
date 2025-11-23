@@ -1,0 +1,130 @@
+{% extends 'base.html' %}
+
+{% block title %}Home - Traffic Analysis{% endblock %}
+
+{% block content %}
+<div class="home-container">
+    <div class="left-container">
+        <h1 class="main-title">Kemacetan Jl. Tunjungan Surabaya</h1>
+        <h2 class="sub-title">Melalui Sistem Neurocomputing dan Machine Learning</h2>
+
+        <p class="description">
+            Sistem analisis lalu lintas berbasis AI yang menggunakan YOLO (You Only Look Once)
+            untuk mendeteksi dan menghitung kendaraan secara real-time. Data yang dikumpulkan
+            dianalisis menggunakan teknik clustering untuk memahami pola kemacetan.
+        </p>
+
+        <div class="stats-preview" id="statsPreview">
+            <div class="stat-item">
+                <span class="stat-label">Waktu Saat Ini</span>
+                <span class="stat-value" id="currentTime">--:--</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Video Aktif</span>
+                <span class="stat-value" id="activeVideo">Loading...</span>
+            </div>
+        </div>
+
+        <div class="button-group">
+            <a href="/analysis/" class="btn btn-primary">
+                Traffic Analysis
+            </a>
+            <a href="/prediction/" class="btn btn-secondary">
+                Prediction Your Route
+            </a>
+        </div>
+    </div>
+
+    <div class="right-container">
+        <div class="video-container">
+            <div class="video-header">
+                <span class="live-indicator">LIVE</span>
+                <span class="video-title">CCTV Jl. Tunjungan - Detection Active</span>
+            </div>
+            <div class="video-wrapper">
+                <img id="videoStream" src="" alt="Video Stream" class="video-frame">
+                <div class="video-loading" id="videoLoading">
+                    <div class="spinner"></div>
+                    <p>Memuat video stream...</p>
+                </div>
+            </div>
+            <div class="video-controls">
+                <button class="btn btn-sm" id="toggleDetection" data-detection="true">
+                    Detection: ON
+                </button>
+                <span class="video-info" id="videoInfo">Jam: --:--</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const videoStream = document.getElementById('videoStream');
+    const videoLoading = document.getElementById('videoLoading');
+    const currentTimeEl = document.getElementById('currentTime');
+    const activeVideoEl = document.getElementById('activeVideo');
+    const videoInfoEl = document.getElementById('videoInfo');
+    const toggleBtn = document.getElementById('toggleDetection');
+
+    let detectionEnabled = true;
+
+    function updateTime() {
+        const now = new Date();
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        currentTimeEl.textContent = `${hours}:${minutes}`;
+    }
+
+    function getTargetHour() {
+        const now = new Date();
+        const minute = now.getMinutes();
+        let hour = now.getHours();
+
+        if (minute >= 30) {
+            hour = (hour + 1) % 24;
+        }
+        return hour;
+    }
+
+    function loadVideoStream() {
+        const hour = getTargetHour();
+        const detection = detectionEnabled ? 'true' : 'false';
+
+        videoLoading.style.display = 'flex';
+
+        // Use FastAPI streaming endpoint
+        const streamUrl = `http://localhost:8001/api/video/stream/${hour}?detection=${detection}`;
+
+        videoStream.src = streamUrl;
+        videoStream.onload = function() {
+            videoLoading.style.display = 'none';
+        };
+        videoStream.onerror = function() {
+            // Fallback: try current video
+            videoStream.src = `http://localhost:8001/api/video/current?detection=${detection}`;
+        };
+
+        videoInfoEl.textContent = `Jam: ${String(hour).padStart(2, '0')}:00`;
+        activeVideoEl.textContent = `Jam ${String(hour).padStart(2, '0')}:00`;
+    }
+
+    toggleBtn.addEventListener('click', function() {
+        detectionEnabled = !detectionEnabled;
+        toggleBtn.textContent = `Detection: ${detectionEnabled ? 'ON' : 'OFF'}`;
+        toggleBtn.dataset.detection = detectionEnabled;
+        loadVideoStream();
+    });
+
+    // Initialize
+    updateTime();
+    setInterval(updateTime, 1000);
+    loadVideoStream();
+
+    // Reload video every 5 minutes to get new hour video if needed
+    setInterval(loadVideoStream, 300000);
+});
+</script>
+{% endblock %}

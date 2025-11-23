@@ -1,0 +1,43 @@
+version: '3.8'
+
+# Docker Compose for CPU-only systems (without NVIDIA GPU)
+# Usage: docker-compose -f docker-compose.cpu.yml up --build
+
+services:
+  django:
+    build:
+      context: ./django_app
+      dockerfile: Dockerfile
+    container_name: traffic_django
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./django_app:/app
+      - /home/dimas/neurocomputing/assets:/app/assets:ro
+    environment:
+      - DEBUG=1
+      - FASTAPI_URL=http://fastapi:8001
+    depends_on:
+      - fastapi
+    networks:
+      - traffic_network
+    restart: unless-stopped
+
+  fastapi:
+    build:
+      context: ./fastapi_service
+      dockerfile: Dockerfile.cpu
+    container_name: traffic_fastapi
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./fastapi_service:/app
+      - /home/dimas/neurocomputing/assets:/app/assets:ro
+      - /home/dimas/neurocomputing/NEURO_MODELING:/app/models:ro
+    networks:
+      - traffic_network
+    restart: unless-stopped
+
+networks:
+  traffic_network:
+    driver: bridge

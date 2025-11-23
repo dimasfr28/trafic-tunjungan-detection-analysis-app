@@ -1,0 +1,327 @@
+{% extends 'base.html' %}
+
+{% block title %}Traffic Analysis{% endblock %}
+
+{% block content %}
+<div class="analysis-container">
+    <h1 class="page-title">Traffic Analysis</h1>
+    <p class="page-subtitle">Analisis lalu lintas berdasarkan data historis Jl. Tunjungan Surabaya</p>
+
+    <!-- Metrics Cards -->
+    <div class="metrics-grid">
+        <div class="metric-card">
+            <div class="metric-icon car-icon"></div>
+            <div class="metric-content">
+                <h3>Average Vehicle Count</h3>
+                <p class="metric-subtitle">Per Nearest Time Period</p>
+                <span class="metric-value" id="avgVehicle">--</span>
+                <span class="metric-label" id="avgVehicleLabel">kendaraan</span>
+            </div>
+        </div>
+
+        <div class="metric-card">
+            <div class="metric-icon clock-icon"></div>
+            <div class="metric-content">
+                <h3>Peak Hour Range</h3>
+                <p class="metric-subtitle">Jam Puncak Kemacetan</p>
+                <span class="metric-value" id="peakHour">--</span>
+                <span class="metric-label">cluster tinggi</span>
+            </div>
+        </div>
+
+        <div class="metric-card">
+            <div class="metric-icon calendar-icon"></div>
+            <div class="metric-content">
+                <h3>Peak Day</h3>
+                <p class="metric-subtitle">Hari Paling Padat</p>
+                <span class="metric-value" id="peakDay">--</span>
+                <span class="metric-label">cluster dominan tertinggi</span>
+            </div>
+        </div>
+
+        <div class="metric-card">
+            <div class="metric-icon vehicle-icon"></div>
+            <div class="metric-content">
+                <h3>Dominant Vehicle Type</h3>
+                <p class="metric-subtitle">For Nearest Time Period</p>
+                <span class="metric-value" id="dominantVehicle">--</span>
+                <span class="metric-label" id="dominantPct">--%</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Day Selector -->
+    <div class="day-selector">
+        <label for="daySelect">Pilih Hari:</label>
+        <select id="daySelect">
+            <option value="Monday">Monday</option>
+            <option value="Tuesday">Tuesday</option>
+            <option value="Wednesday">Wednesday</option>
+            <option value="Thursday">Thursday</option>
+            <option value="Friday">Friday</option>
+            <option value="Saturday">Saturday</option>
+            <option value="Sunday">Sunday</option>
+        </select>
+    </div>
+
+    <!-- Charts Container 1 (2:1) -->
+    <div class="charts-row charts-2-1">
+        <div class="chart-card chart-large">
+            <h3>Traffic Density per Jam</h3>
+            <canvas id="lineChart"></canvas>
+        </div>
+        <div class="chart-card chart-small">
+            <h3>Cluster Distribution</h3>
+            <canvas id="pieChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Charts Container 2 (1:2) -->
+    <div class="charts-row charts-1-2">
+        <div class="chart-card chart-small">
+            <h3>Total Vehicles per Day</h3>
+            <canvas id="barChart"></canvas>
+        </div>
+        <div class="chart-card chart-large">
+            <h3>Traffic Intensity Heatmap (Hari x Jam)</h3>
+            <div class="heatmap-container">
+                <canvas id="heatmapChart"></canvas>
+            </div>
+            <div class="heatmap-legend">
+                <span class="legend-item"><span class="legend-color low"></span> Low (1)</span>
+                <span class="legend-item"><span class="legend-color medium"></span> Medium (2)</span>
+                <span class="legend-item"><span class="legend-color high"></span> High (3)</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    let lineChart, pieChart, barChart, heatmapChart;
+
+    // Get current day
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const today = days[new Date().getDay()];
+    document.getElementById('daySelect').value = today;
+
+    // Load metrics
+    async function loadMetrics() {
+        try {
+            const response = await fetch('/api/metrics/');
+            const data = await response.json();
+
+            if (data.success) {
+                const m = data.metrics;
+                document.getElementById('avgVehicle').textContent = m.avg_vehicle_count;
+                document.getElementById('avgVehicleLabel').textContent = `per ${m.current_time_bucket}`;
+                document.getElementById('peakHour').textContent = m.peak_hour_range;
+                document.getElementById('peakDay').textContent = m.peak_day;
+                document.getElementById('dominantVehicle').textContent = m.dominant_vehicle_type;
+                document.getElementById('dominantPct').textContent = `${m.dominant_vehicle_pct}%`;
+            }
+        } catch (error) {
+            console.error('Error loading metrics:', error);
+        }
+    }
+
+    // Load chart data
+    async function loadChartData(day) {
+        try {
+            const response = await fetch(`/api/chart-data/?day=${day}`);
+            const data = await response.json();
+
+            if (data.success) {
+                updateLineChart(data.line_chart);
+                updatePieChart(data.pie_chart);
+                updateBarChart(data.bar_chart);
+                updateHeatmap(data.heatmap);
+            }
+        } catch (error) {
+            console.error('Error loading chart data:', error);
+        }
+    }
+
+    function updateLineChart(chartData) {
+        const ctx = document.getElementById('lineChart').getContext('2d');
+
+        if (lineChart) lineChart.destroy();
+
+        lineChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: chartData.labels,
+                datasets: [
+                    {
+                        label: 'Car',
+                        data: chartData.datasets.car,
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Motorcycle',
+                        data: chartData.datasets.motorcycle,
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Heavy Vehicle',
+                        data: chartData.datasets.heavy,
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                        tension: 0.4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' }
+                },
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+    }
+
+    function updatePieChart(chartData) {
+        const ctx = document.getElementById('pieChart').getContext('2d');
+
+        if (pieChart) pieChart.destroy();
+
+        pieChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: chartData.labels,
+                datasets: [{
+                    data: chartData.data,
+                    backgroundColor: [
+                        'rgba(75, 192, 192, 0.8)',
+                        'rgba(255, 206, 86, 0.8)',
+                        'rgba(255, 99, 132, 0.8)'
+                    ],
+                    borderColor: [
+                        'rgba(75, 192, 192, 1)',
+                        'rgba(255, 206, 86, 1)',
+                        'rgba(255, 99, 132, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+    }
+
+    function updateBarChart(chartData) {
+        const ctx = document.getElementById('barChart').getContext('2d');
+
+        if (barChart) barChart.destroy();
+
+        barChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: chartData.labels,
+                datasets: [
+                    {
+                        label: 'Car',
+                        data: chartData.datasets.car,
+                        backgroundColor: 'rgba(54, 162, 235, 0.8)'
+                    },
+                    {
+                        label: 'Motorcycle',
+                        data: chartData.datasets.motorcycle,
+                        backgroundColor: 'rgba(75, 192, 192, 0.8)'
+                    },
+                    {
+                        label: 'Heavy',
+                        data: chartData.datasets.heavy,
+                        backgroundColor: 'rgba(255, 99, 132, 0.8)'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' }
+                },
+                scales: {
+                    x: { stacked: true },
+                    y: { stacked: true, beginAtZero: true }
+                }
+            }
+        });
+    }
+
+    function updateHeatmap(heatmapData) {
+        const canvas = document.getElementById('heatmapChart');
+        const ctx = canvas.getContext('2d');
+
+        // Clear previous
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const cellWidth = (canvas.width - 60) / 24;
+        const cellHeight = (canvas.height - 40) / 7;
+        const offsetX = 50;
+        const offsetY = 20;
+
+        // Draw cells
+        heatmapData.data.forEach(cell => {
+            const x = offsetX + cell.x * cellWidth;
+            const y = offsetY + cell.y * cellHeight;
+
+            // Color based on cluster
+            let color;
+            if (cell.cluster === 3) {
+                color = `rgba(255, 99, 132, ${0.5 + (cell.value / 1000) * 0.5})`;
+            } else if (cell.cluster === 2) {
+                color = `rgba(255, 206, 86, ${0.5 + (cell.value / 1000) * 0.5})`;
+            } else {
+                color = `rgba(75, 192, 192, ${0.3 + (cell.value / 1000) * 0.5})`;
+            }
+
+            ctx.fillStyle = color;
+            ctx.fillRect(x, y, cellWidth - 1, cellHeight - 1);
+        });
+
+        // Draw labels
+        ctx.fillStyle = '#666';
+        ctx.font = '10px Arial';
+
+        // X labels (hours)
+        heatmapData.xLabels.forEach((label, i) => {
+            if (i % 2 === 0) {
+                ctx.fillText(label, offsetX + i * cellWidth + 2, canvas.height - 5);
+            }
+        });
+
+        // Y labels (days)
+        ctx.font = '11px Arial';
+        heatmapData.yLabels.forEach((label, i) => {
+            ctx.fillText(label.substring(0, 3), 5, offsetY + i * cellHeight + cellHeight / 2 + 4);
+        });
+    }
+
+    // Event listeners
+    document.getElementById('daySelect').addEventListener('change', function() {
+        loadChartData(this.value);
+    });
+
+    // Initialize
+    loadMetrics();
+    loadChartData(today);
+});
+</script>
+{% endblock %}

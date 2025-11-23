@@ -1,0 +1,221 @@
+{% extends 'base.html' %}
+
+{% block title %}Prediction - Traffic Analysis{% endblock %}
+
+{% block content %}
+<div class="prediction-container">
+    <h1 class="page-title">Traffic Prediction</h1>
+    <p class="page-subtitle">Upload video untuk analisis prediksi lalu lintas menggunakan YOLO</p>
+
+    <div class="prediction-grid">
+        <!-- Left Panel: Input -->
+        <div class="input-panel">
+            <h2>Input Parameters</h2>
+
+            <form id="predictionForm" class="prediction-form">
+                <div class="form-group">
+                    <label for="predictionDate">Tanggal</label>
+                    <input type="date" id="predictionDate" name="date" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="predictionHour">Jam</label>
+                    <select id="predictionHour" name="hour" required>
+                        {% for h in "0123456789101112131415161718192021222324"|make_list %}
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="videoFile">Upload Video</label>
+                    <div class="file-upload">
+                        <input type="file" id="videoFile" name="file" accept="video/*" required>
+                        <div class="file-upload-label">
+                            <span class="upload-icon"></span>
+                            <span class="upload-text">Pilih file video atau drag & drop</span>
+                            <span class="upload-hint">MP4, AVI, MOV (Max 500MB)</span>
+                        </div>
+                    </div>
+                    <p class="file-name" id="fileName"></p>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary btn-full" id="processBtn">
+                        Process Video
+                    </button>
+                </div>
+            </form>
+
+            <div class="processing-status" id="processingStatus" style="display: none;">
+                <div class="spinner"></div>
+                <p>Memproses video dengan YOLO detection...</p>
+                <p class="status-detail" id="statusDetail">Initializing...</p>
+            </div>
+
+            <div class="prediction-results" id="predictionResults" style="display: none;">
+                <h3>Detection Results</h3>
+                <div class="results-grid">
+                    <div class="result-item">
+                        <span class="result-label">Car</span>
+                        <span class="result-value" id="resultCar">0</span>
+                    </div>
+                    <div class="result-item">
+                        <span class="result-label">Motorcycle</span>
+                        <span class="result-value" id="resultMotorcycle">0</span>
+                    </div>
+                    <div class="result-item">
+                        <span class="result-label">Heavy Vehicle</span>
+                        <span class="result-value" id="resultHeavy">0</span>
+                    </div>
+                    <div class="result-item">
+                        <span class="result-label">Frames Processed</span>
+                        <span class="result-value" id="resultFrames">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Output Video -->
+        <div class="output-panel">
+            <h2>Output Video</h2>
+
+            <div class="video-output-container">
+                <div class="video-placeholder" id="videoPlaceholder">
+                    <span class="placeholder-icon"></span>
+                    <p>Video hasil prediksi akan ditampilkan di sini</p>
+                    <p class="placeholder-hint">Upload dan proses video terlebih dahulu</p>
+                </div>
+
+                <div class="video-wrapper" id="videoOutput" style="display: none;">
+                    <img id="outputStream" src="" alt="Output Video" class="video-frame">
+                </div>
+            </div>
+
+            <div class="video-controls output-controls" id="outputControls" style="display: none;">
+                <button class="btn btn-sm" id="replayBtn">Replay</button>
+                <span class="video-info">Processed Video</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('predictionForm');
+    const fileInput = document.getElementById('videoFile');
+    const fileName = document.getElementById('fileName');
+    const processBtn = document.getElementById('processBtn');
+    const processingStatus = document.getElementById('processingStatus');
+    const statusDetail = document.getElementById('statusDetail');
+    const predictionResults = document.getElementById('predictionResults');
+    const videoPlaceholder = document.getElementById('videoPlaceholder');
+    const videoOutput = document.getElementById('videoOutput');
+    const outputStream = document.getElementById('outputStream');
+    const outputControls = document.getElementById('outputControls');
+    const hourSelect = document.getElementById('predictionHour');
+
+    // Populate hour select
+    for (let h = 0; h < 24; h++) {
+        const option = document.createElement('option');
+        option.value = h;
+        option.textContent = `${String(h).padStart(2, '0')}:00`;
+        hourSelect.appendChild(option);
+    }
+
+    // Set default date to today
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('predictionDate').value = today;
+    hourSelect.value = new Date().getHours();
+
+    // File input handler
+    fileInput.addEventListener('change', function() {
+        if (this.files.length > 0) {
+            fileName.textContent = this.files[0].name;
+        } else {
+            fileName.textContent = '';
+        }
+    });
+
+    // Drag and drop
+    const fileUpload = document.querySelector('.file-upload');
+    fileUpload.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        this.classList.add('dragover');
+    });
+    fileUpload.addEventListener('dragleave', function() {
+        this.classList.remove('dragover');
+    });
+    fileUpload.addEventListener('drop', function(e) {
+        e.preventDefault();
+        this.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+            fileInput.files = e.dataTransfer.files;
+            fileName.textContent = e.dataTransfer.files[0].name;
+        }
+    });
+
+    // Form submit
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        if (!fileInput.files.length) {
+            alert('Pilih file video terlebih dahulu');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        formData.append('date', document.getElementById('predictionDate').value);
+        formData.append('hour', hourSelect.value);
+
+        // Show processing status
+        processBtn.disabled = true;
+        processingStatus.style.display = 'block';
+        predictionResults.style.display = 'none';
+
+        try {
+            statusDetail.textContent = 'Uploading video...';
+
+            const response = await fetch('http://localhost:8001/api/predict', {
+                method: 'POST',
+                body: formData
+            });
+
+            statusDetail.textContent = 'Processing with YOLO detection...';
+
+            const data = await response.json();
+
+            if (data.success) {
+                // Show results
+                predictionResults.style.display = 'block';
+                document.getElementById('resultCar').textContent = data.total_counts.car || 0;
+                document.getElementById('resultMotorcycle').textContent = data.total_counts.motorcycle || 0;
+                document.getElementById('resultHeavy').textContent = data.total_counts.heavy || 0;
+                document.getElementById('resultFrames').textContent = data.frames_processed;
+
+                // Show output video
+                videoPlaceholder.style.display = 'none';
+                videoOutput.style.display = 'block';
+                outputControls.style.display = 'flex';
+
+                outputStream.src = 'http://localhost:8001/api/predict/stream';
+            } else {
+                alert('Error: ' + data.error);
+            }
+        } catch (error) {
+            alert('Error processing video: ' + error.message);
+        } finally {
+            processBtn.disabled = false;
+            processingStatus.style.display = 'none';
+        }
+    });
+
+    // Replay button
+    document.getElementById('replayBtn').addEventListener('click', function() {
+        outputStream.src = 'http://localhost:8001/api/predict/stream?' + Date.now();
+    });
+});
+</script>
+{% endblock %}
