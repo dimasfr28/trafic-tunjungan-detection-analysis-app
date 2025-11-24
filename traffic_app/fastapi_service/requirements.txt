@@ -7,3 +7,4 @@ torch==2.1.0
 torchvision==0.16.0
 ultralytics==8.0.200
 aiofiles==23.2.1
+pytesseract==0.3.10

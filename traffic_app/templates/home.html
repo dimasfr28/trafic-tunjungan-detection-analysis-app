@@ -96,7 +96,7 @@ document.addEventListener('DOMContentLoaded', function() {
         videoLoading.style.display = 'flex';
 
         // Use FastAPI streaming endpoint
-        const streamUrl = `http://localhost:8001/api/video/stream/${hour}?detection=${detection}`;
+        const streamUrl = `http://localhost:8002/api/video/stream/${hour}?detection=${detection}`;
 
         videoStream.src = streamUrl;
         videoStream.onload = function() {
@@ -104,7 +104,7 @@ document.addEventListener('DOMContentLoaded', function() {
         };
         videoStream.onerror = function() {
             // Fallback: try current video
-            videoStream.src = `http://localhost:8001/api/video/current?detection=${detection}`;
+            videoStream.src = `http://localhost:8002/api/video/current?detection=${detection}`;
         };
 
         videoInfoEl.textContent = `Jam: ${String(hour).padStart(2, '0')}:00`;

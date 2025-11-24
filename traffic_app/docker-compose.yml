@@ -7,13 +7,13 @@ services:
       dockerfile: Dockerfile
     container_name: traffic_django
     ports:
-      - "8000:8000"
+      - "8001:8001"
     volumes:
       - ./django_app:/app
       - ../assets:/app/assets:ro
     environment:
       - DEBUG=1
-      - FASTAPI_URL=http://fastapi:8001
+      - FASTAPI_URL=http://fastapi:8002
     depends_on:
       - fastapi
     networks:
@@ -26,7 +26,7 @@ services:
       dockerfile: Dockerfile
     container_name: traffic_fastapi
     ports:
-      - "8001:8001"
+      - "8002:8002"
     volumes:
       - ./fastapi_service:/app
       - ../assets:/app/assets:ro

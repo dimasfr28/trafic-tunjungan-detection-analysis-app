@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     libxext6 \
     libxrender-dev \
     ffmpeg \
+    tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -23,9 +24,10 @@ RUN pip3 install --no-cache-dir \
     opencv-python-headless==4.8.1.78 \
     numpy==1.24.3 \
     aiofiles==23.2.1 \
+    pytesseract==0.3.10 \
     ultralytics>=8.1.0
 
-# Install PyTorch CPU versions
+# Install PyTorch CPU versions (separate to avoid --index-url conflict)
 RUN pip3 install --no-cache-dir \
     torch torchvision --index-url https://download.pytorch.org/whl/cpu
 

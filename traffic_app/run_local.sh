@@ -40,18 +40,18 @@ pip install -q torch torchvision ultralytics
 
 # Function to run Django
 run_django() {
-    echo -e "${GREEN}Starting Django server on http://localhost:8000${NC}"
+    echo -e "${GREEN}Starting Django server on http://localhost:8001${NC}"
     cd "$APP_DIR/django_app"
     export DEBUG=1
-    export FASTAPI_URL=http://localhost:8001
-    python manage.py runserver 0.0.0.0:8000
+    export FASTAPI_URL=http://localhost:8002
+    python manage.py runserver 0.0.0.0:8001
 }
 
 # Function to run FastAPI
 run_fastapi() {
-    echo -e "${GREEN}Starting FastAPI server on http://localhost:8001${NC}"
+    echo -e "${GREEN}Starting FastAPI server on http://localhost:8002${NC}"
     cd "$APP_DIR/fastapi_service"
-    uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+    uvicorn main:app --host 0.0.0.0 --port 8002 --reload
 }
 
 # Main
@@ -69,7 +69,7 @@ case "$1" in
 
         # Run FastAPI in background
         cd "$APP_DIR/fastapi_service"
-        uvicorn main:app --host 0.0.0.0 --port 8001 &
+        uvicorn main:app --host 0.0.0.0 --port 8002 &
         FASTAPI_PID=$!
 
         # Wait a bit for FastAPI to start
@@ -78,15 +78,15 @@ case "$1" in
         # Run Django in foreground
         cd "$APP_DIR/django_app"
         export DEBUG=1
-        export FASTAPI_URL=http://localhost:8001
-        python manage.py runserver 0.0.0.0:8000 &
+        export FASTAPI_URL=http://localhost:8002
+        python manage.py runserver 0.0.0.0:8001 &
         DJANGO_PID=$!
 
         echo ""
         echo -e "${GREEN}========================================${NC}"
         echo -e "${GREEN}  Services Running:${NC}"
-        echo -e "${GREEN}  - Django:  http://localhost:8000${NC}"
-        echo -e "${GREEN}  - FastAPI: http://localhost:8001${NC}"
+        echo -e "${GREEN}  - Django:  http://localhost:8001${NC}"
+        echo -e "${GREEN}  - FastAPI: http://localhost:8002${NC}"
         echo -e "${GREEN}========================================${NC}"
         echo ""
 
