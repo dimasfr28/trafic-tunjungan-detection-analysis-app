@@ -31,7 +31,13 @@
                     <div class="file-upload">
                         <input type="file" id="videoFile" name="file" accept="video/*" required>
                         <div class="file-upload-label">
-                            <span class="upload-icon"></span>
+                            <span class="upload-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                    <polyline points="17 8 12 3 7 8"/>
+                                    <line x1="12" y1="3" x2="12" y2="15"/>
+                                </svg>
+                            </span>
                             <span class="upload-text">Pilih file video atau drag & drop</span>
                             <span class="upload-hint">MP4, AVI, MOV (Max 500MB)</span>
                         </div>
@@ -96,7 +102,12 @@
 
             <div class="video-output-container">
                 <div class="video-placeholder" id="videoPlaceholder">
-                    <span class="placeholder-icon"></span>
+                    <span class="placeholder-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="23 7 16 12 23 17 23 7"/>
+                            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                        </svg>
+                    </span>
                     <p>Video hasil prediksi akan ditampilkan di sini</p>
                     <p class="placeholder-hint">Upload dan proses video terlebih dahulu</p>
                 </div>
@@ -194,7 +205,7 @@ document.addEventListener('DOMContentLoaded', function() {
             statusDetail.textContent = 'Uploading & Processing with YOLO detection...';
 
             // Start fetch - upload is fast, processing takes time
-            const response = await fetch('http://localhost:8001/api/predict', {
+            const response = await fetch('http://localhost:8002/api/predict', {
                 method: 'POST',
                 body: formData
             });
@@ -249,7 +260,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     videoOutput.innerHTML = '<img id="outputStream" src="" alt="Output Video" class="video-frame">';
                     // Re-get the element after resetting
                     const newOutputStream = document.getElementById('outputStream');
-                    newOutputStream.src = 'http://localhost:8001/api/predict/stream?' + Date.now();
+                    newOutputStream.src = 'http://localhost:8002/api/predict/stream?' + Date.now();
                 }, 500);
             } else {
                 alert('Error: ' + data.error);
@@ -286,14 +297,14 @@ document.addEventListener('DOMContentLoaded', function() {
             if (retryCount < maxRetries) {
                 retryCount++;
                 setTimeout(() => {
-                    outputStream.src = 'http://localhost:8001/api/predict/stream?' + Date.now();
+                    outputStream.src = 'http://localhost:8002/api/predict/stream?' + Date.now();
                 }, 1000);
             } else {
                 videoOutput.innerHTML = '<p class="stream-error">Failed to load video stream after ' + maxRetries + ' retries. Please click Replay to try again.</p>';
             }
         };
 
-        outputStream.src = 'http://localhost:8001/api/predict/stream?' + Date.now();
+        outputStream.src = 'http://localhost:8002/api/predict/stream?' + Date.now();
     }
 
     // Initial load function for after prediction

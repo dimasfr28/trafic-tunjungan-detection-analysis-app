@@ -67,8 +67,8 @@ Atau jalankan service secara terpisah:
 
 ## Akses Aplikasi
 
-- **Web Interface**: http://localhost:8000
-- **FastAPI Docs**: http://localhost:8001/docs
+- **Web Interface**: http://localhost:8001
+- **FastAPI Docs**: http://localhost:8002/docs
 
 ## API Endpoints
 
