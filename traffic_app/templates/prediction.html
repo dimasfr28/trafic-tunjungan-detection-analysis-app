@@ -59,39 +59,31 @@
             </div>
 
             <div class="prediction-results" id="predictionResults" style="display: none;">
-                <h3>Detection Results</h3>
-                <div class="results-grid">
-                    <div class="result-item">
-                        <span class="result-label">Car</span>
-                        <span class="result-value" id="resultCar">0</span>
-                    </div>
-                    <div class="result-item">
-                        <span class="result-label">Motorcycle</span>
-                        <span class="result-value" id="resultMotorcycle">0</span>
-                    </div>
-                    <div class="result-item">
-                        <span class="result-label">Heavy Vehicle</span>
-                        <span class="result-value" id="resultHeavy">0</span>
-                    </div>
-                    <div class="result-item">
-                        <span class="result-label">Frames Processed</span>
-                        <span class="result-value" id="resultFrames">0</span>
-                    </div>
-                </div>
+                <h3>Detection Results Per Minute</h3>
+                <p class="results-summary">
+                    Total: <span id="totalMinutes">0</span> menit |
+                    <span id="totalCar">0</span> Car,
+                    <span id="totalMotorcycle">0</span> Motorcycle,
+                    <span id="totalHeavy">0</span> Heavy |
+                    Frames: <span id="resultFrames">0</span>
+                </p>
 
-                <!-- Traffic Density Prediction -->
-                <div class="traffic-prediction" id="trafficPrediction">
-                    <h3>Traffic Density Prediction (DNN)</h3>
-                    <div class="prediction-display">
-                        <div class="density-indicator" id="densityIndicator">
-                            <span class="density-class" id="densityClass">-</span>
-                            <span class="density-label" id="densityLabel">Waiting...</span>
-                        </div>
-                        <div class="prediction-confidence">
-                            <span class="confidence-label">Confidence:</span>
-                            <span class="confidence-value" id="confidenceValue">--%</span>
-                        </div>
-                    </div>
+                <div class="results-table-container">
+                    <table class="results-table">
+                        <thead>
+                            <tr>
+                                <th>Waktu</th>
+                                <th>Car</th>
+                                <th>Motor</th>
+                                <th>Heavy</th>
+                                <th>Total</th>
+                                <th>Kepadatan (DNN)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="resultsTableBody">
+                            <!-- Populated by JavaScript -->
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -217,33 +209,50 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.success) {
                 // Show results
                 predictionResults.style.display = 'block';
-                document.getElementById('resultCar').textContent = data.total_counts.car || 0;
-                document.getElementById('resultMotorcycle').textContent = data.total_counts.motorcycle || 0;
-                document.getElementById('resultHeavy').textContent = data.total_counts.heavy || 0;
+
+                // Update summary
+                document.getElementById('totalMinutes').textContent = data.total_minutes || 0;
+                document.getElementById('totalCar').textContent = data.total_counts.car || 0;
+                document.getElementById('totalMotorcycle').textContent = data.total_counts.motorcycle || 0;
+                document.getElementById('totalHeavy').textContent = data.total_counts.heavy || 0;
                 document.getElementById('resultFrames').textContent = data.frames_processed;
 
-                // Display traffic density prediction
-                if (data.traffic_prediction) {
-                    const pred = data.traffic_prediction;
-                    const densityIndicator = document.getElementById('densityIndicator');
-                    const densityClass = document.getElementById('densityClass');
-                    const densityLabel = document.getElementById('densityLabel');
-                    const confidenceValue = document.getElementById('confidenceValue');
+                // Build table rows for per-minute results
+                const tableBody = document.getElementById('resultsTableBody');
+                tableBody.innerHTML = '';
 
-                    // Set class and label
-                    densityClass.textContent = pred.class;
-                    densityLabel.textContent = pred.label;
-                    confidenceValue.textContent = Math.round(pred.confidence * 100) + '%';
+                if (data.results_per_minute && data.results_per_minute.length > 0) {
+                    data.results_per_minute.forEach((result, index) => {
+                        const row = document.createElement('tr');
+                        const total = (result.counts.car || 0) + (result.counts.motorcycle || 0) + (result.counts.heavy || 0);
 
-                    // Set color based on class
-                    densityIndicator.className = 'density-indicator';
-                    if (pred.class === 1) {
-                        densityIndicator.classList.add('density-low');
-                    } else if (pred.class === 2) {
-                        densityIndicator.classList.add('density-medium');
-                    } else {
-                        densityIndicator.classList.add('density-high');
-                    }
+                        // Get density class for styling based on label
+                        // Class mapping from notebook:
+                        // 1 = Lancar (Low/Smooth) -> Green
+                        // 2 = Macet (High/Congested) -> Red
+                        // 3 = Padat (Medium/Dense) -> Yellow
+                        let densityClass = 'density-lancar';
+                        const label = result.prediction.label.toLowerCase();
+                        if (label === 'macet') densityClass = 'density-macet';
+                        else if (label === 'padat') densityClass = 'density-padat';
+
+                        row.innerHTML = `
+                            <td>${result.time}</td>
+                            <td>${result.counts.car || 0}</td>
+                            <td>${result.counts.motorcycle || 0}</td>
+                            <td>${result.counts.heavy || 0}</td>
+                            <td><strong>${total}</strong></td>
+                            <td>
+                                <span class="density-badge ${densityClass}">
+                                    ${result.prediction.label}
+                                    <small>(${Math.round(result.prediction.confidence * 100)}%)</small>
+                                </span>
+                            </td>
+                        `;
+                        tableBody.appendChild(row);
+                    });
+                } else {
+                    tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No per-minute data available</td></tr>';
                 }
 
                 // Show model status warning if model failed to load

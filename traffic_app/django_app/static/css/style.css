@@ -679,6 +679,99 @@ body {
     color: var(--primary);
 }
 
+/* Results Summary */
+.results-summary {
+    font-size: 0.875rem;
+    color: var(--gray);
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    background: rgba(30, 41, 59, 0.5);
+    border-radius: 8px;
+}
+
+.results-summary span {
+    color: var(--primary);
+    font-weight: 600;
+}
+
+/* Results Table */
+.results-table-container {
+    max-height: 300px;
+    overflow-y: auto;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.results-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.results-table thead {
+    position: sticky;
+    top: 0;
+    background: rgba(30, 41, 59, 1);
+    z-index: 1;
+}
+
+.results-table th {
+    padding: 0.75rem 0.5rem;
+    text-align: left;
+    color: var(--gray);
+    font-weight: 600;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.results-table td {
+    padding: 0.6rem 0.5rem;
+    color: #f1f5f9;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.results-table tbody tr:hover {
+    background: rgba(59, 130, 246, 0.1);
+}
+
+/* Density Badge */
+.density-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+/* Traffic density badge styles - Indonesian labels from DNN model */
+/* Lancar = Smooth/Low (Green), Padat = Dense/Medium (Yellow), Macet = Congested/High (Red) */
+.density-badge.density-lancar,
+.density-badge.density-low {
+    background: rgba(34, 197, 94, 0.2);
+    color: var(--success);
+    border: 1px solid rgba(34, 197, 94, 0.4);
+}
+
+.density-badge.density-padat,
+.density-badge.density-medium {
+    background: rgba(245, 158, 11, 0.2);
+    color: var(--warning);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.density-badge.density-macet,
+.density-badge.density-high {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--danger);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.density-badge small {
+    opacity: 0.7;
+    font-weight: 400;
+}
+
 /* Traffic Prediction Display */
 .traffic-prediction {
     margin-top: 1.5rem;
@@ -709,16 +802,19 @@ body {
     flex: 1;
 }
 
+.density-indicator.density-lancar,
 .density-indicator.density-low {
     background: linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(34, 197, 94, 0.1));
     border: 1px solid rgba(34, 197, 94, 0.5);
 }
 
+.density-indicator.density-padat,
 .density-indicator.density-medium {
     background: linear-gradient(135deg, rgba(245, 158, 11, 0.3), rgba(245, 158, 11, 0.1));
     border: 1px solid rgba(245, 158, 11, 0.5);
 }
 
+.density-indicator.density-macet,
 .density-indicator.density-high {
     background: linear-gradient(135deg, rgba(239, 68, 68, 0.3), rgba(239, 68, 68, 0.1));
     border: 1px solid rgba(239, 68, 68, 0.5);
@@ -736,16 +832,19 @@ body {
     background: rgba(255, 255, 255, 0.1);
 }
 
+.density-lancar .density-class,
 .density-low .density-class {
     color: var(--success);
     background: rgba(34, 197, 94, 0.2);
 }
 
+.density-padat .density-class,
 .density-medium .density-class {
     color: var(--warning);
     background: rgba(245, 158, 11, 0.2);
 }
 
+.density-macet .density-class,
 .density-high .density-class {
     color: var(--danger);
     background: rgba(239, 68, 68, 0.2);

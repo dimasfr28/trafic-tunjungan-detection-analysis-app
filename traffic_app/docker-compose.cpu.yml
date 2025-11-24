@@ -30,7 +30,9 @@ services:
       - "8002:8002"
     volumes:
       - ./fastapi_service:/app
-      - ../assets:/app/assets:ro
+      - ../assets/video/input_vidio:/app/assets/video/input_vidio:ro
+      - ../assets/video/output_vidio:/app/assets/video/output_vidio:rw  # Writable for processed videos
+      - ../assets/excel:/app/assets/excel:ro
       - ../NEURO_MODELING/YOLOv8s:/app/models/YOLOv8s:ro
       - ../NEURO_MODELING/best_deep_neural_network_sgd.pkl:/app/models/best_deep_neural_network_sgd.pkl:ro
     networks:

@@ -10,7 +10,7 @@ import math
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Generator
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from collections import defaultdict
@@ -45,8 +45,10 @@ app.add_middleware(
 MODEL_PATH = "/app/models/YOLOv8s/train/weights/best.pt"
 DNN_MODEL_PATH = "/app/models/best_deep_neural_network_sgd.pkl"
 VIDEO_DIR = Path("/app/assets/video/input_vidio")
+OUTPUT_DIR = Path("/app/assets/video/output_vidio")  # Persistent output directory
 TEMP_DIR = Path("/tmp/video_processing")
 TEMP_DIR.mkdir(exist_ok=True)
+OUTPUT_DIR.mkdir(exist_ok=True)
 
 
 # DNN Model for Traffic Density Prediction
@@ -100,8 +102,29 @@ def get_dnn_model():
 def predict_traffic_density(car_count: int, motorcycle_count: int, heavy_count: int,
                            hour: int = 12, day_of_week: int = 0) -> dict:
     """
-    Predict traffic density class using DNN model
-    Returns: {'class': 1|2|3, 'label': 'Low'|'Medium'|'High', 'confidence': float}
+    Predict traffic density class using DNN model.
+    Feature engineering matches notebook: klasifikasi apip V2.ipynb
+
+    12 Features (same as training):
+    1. count_of_car
+    2. count_of_motorcycle
+    3. count_of_heavy
+    4. vehicle_count
+    5. motorcycle_ratio
+    6. car_ratio
+    7. heavy_ratio
+    8. car_motorcycle_interaction
+    9. density_score
+    10. vehicle_count_squared
+    11. car_squared
+    12. vehicle_variety
+
+    Label Encoding (from LabelEncoder alphabetical order):
+    - 0 = Lancar (Low/Smooth traffic)
+    - 1 = Macet (High/Congested)
+    - 2 = Padat (Medium/Dense)
+
+    Returns: {'class': 1|2|3, 'label': 'Lancar'|'Macet'|'Padat', 'confidence': float}
     """
     model = get_dnn_model()
 
@@ -109,67 +132,112 @@ def predict_traffic_density(car_count: int, motorcycle_count: int, heavy_count: 
     if model is None:
         total = car_count + motorcycle_count + heavy_count
         if total < 50:
-            return {'class': 1, 'label': 'Low', 'confidence': 0.8}
+            return {'class': 1, 'label': 'Lancar', 'confidence': 0.8}
         elif total < 150:
-            return {'class': 2, 'label': 'Medium', 'confidence': 0.8}
+            return {'class': 3, 'label': 'Padat', 'confidence': 0.8}
         else:
-            return {'class': 3, 'label': 'High', 'confidence': 0.8}
+            return {'class': 2, 'label': 'Macet', 'confidence': 0.8}
 
     try:
-        # Feature engineering (12 features)
-        total = car_count + motorcycle_count + heavy_count
-        total = max(total, 1)  # Avoid division by zero
+        # Feature engineering - EXACTLY as in notebook
+        vehicle_count = car_count + motorcycle_count + heavy_count
+        vehicle_count_safe = max(vehicle_count, 1e-8)  # Avoid division by zero
 
-        # Normalize counts (approximate normalization based on typical ranges)
-        car_norm = car_count / 100.0
-        motorcycle_norm = motorcycle_count / 200.0
-        heavy_norm = heavy_count / 50.0
-        total_norm = total / 300.0
+        # Ratio features
+        motorcycle_ratio = motorcycle_count / vehicle_count_safe
+        car_ratio = car_count / vehicle_count_safe
+        heavy_ratio = heavy_count / vehicle_count_safe
 
-        # Ratios
-        car_ratio = car_count / total
-        motorcycle_ratio = motorcycle_count / total
-        heavy_ratio = heavy_count / total
+        # Interaction features
+        car_motorcycle_interaction = car_count * motorcycle_count
+        density_score = car_count * 2 + motorcycle_count * 1 + heavy_count * 3
 
-        # Cyclical time encoding
-        hour_sin = math.sin(2 * math.pi * hour / 24)
-        hour_cos = math.cos(2 * math.pi * hour / 24)
-        day_sin = math.sin(2 * math.pi * day_of_week / 7)
-        day_cos = math.cos(2 * math.pi * day_of_week / 7)
+        # Polynomial features
+        vehicle_count_squared = vehicle_count ** 2
+        car_squared = car_count ** 2
 
-        # Is weekend
-        is_weekend = 1.0 if day_of_week >= 5 else 0.0
+        # Statistical features
+        vehicle_variety = int(car_count > 0) + int(motorcycle_count > 0) + int(heavy_count > 0)
+
+        # Raw features (before scaling)
+        raw_features = [
+            car_count,                    # count_of_car
+            motorcycle_count,             # count_of_motorcycle
+            heavy_count,                  # count_of_heavy
+            vehicle_count,                # vehicle_count
+            motorcycle_ratio,             # motorcycle_ratio
+            car_ratio,                    # car_ratio
+            heavy_ratio,                  # heavy_ratio
+            car_motorcycle_interaction,   # car_motorcycle_interaction
+            density_score,                # density_score
+            vehicle_count_squared,        # vehicle_count_squared
+            car_squared,                  # car_squared
+            vehicle_variety               # vehicle_variety
+        ]
+
+        # MinMaxScaler parameters from training data (approximated from notebook statistics)
+        # Format: (min, max) for each feature
+        feature_ranges = [
+            (0, 43),       # count_of_car
+            (0, 163),      # count_of_motorcycle
+            (0, 7),        # count_of_heavy
+            (0, 191),      # vehicle_count
+            (0, 1),        # motorcycle_ratio
+            (0, 0.6),      # car_ratio
+            (0, 0.17),     # heavy_ratio
+            (0, 4600),     # car_motorcycle_interaction
+            (0, 220),      # density_score
+            (0, 36500),    # vehicle_count_squared
+            (0, 1850),     # car_squared
+            (0, 3)         # vehicle_variety
+        ]
+
+        # Apply MinMaxScaler: (x - min) / (max - min)
+        scaled_features = []
+        for val, (f_min, f_max) in zip(raw_features, feature_ranges):
+            if f_max - f_min > 0:
+                scaled = (val - f_min) / (f_max - f_min)
+                scaled = max(0, min(1, scaled))  # Clip to [0, 1]
+            else:
+                scaled = 0
+            scaled_features.append(scaled)
 
         # Create feature tensor
-        features = torch.tensor([[
-            car_norm, motorcycle_norm, heavy_norm, total_norm,
-            car_ratio, motorcycle_ratio, heavy_ratio,
-            hour_sin, hour_cos, day_sin, day_cos, is_weekend
-        ]], dtype=torch.float32)
+        features = torch.tensor([scaled_features], dtype=torch.float32)
 
         # Predict
         with torch.no_grad():
             output = model(features)
             probs = torch.softmax(output, dim=1)
-            pred_class = torch.argmax(probs, dim=1).item() + 1  # Classes are 1, 2, 3
-            confidence = probs[0, pred_class - 1].item()
+            pred_idx = torch.argmax(probs, dim=1).item()  # 0, 1, or 2
+            confidence = probs[0, pred_idx].item()
 
-        labels = {1: 'Low', 2: 'Medium', 3: 'High'}
+        # Label mapping from LabelEncoder (alphabetical: Lancar, Macet, Padat)
+        # Map to class numbers that match original cluster labels
+        idx_to_label = {
+            0: ('Lancar', 1),   # Index 0 -> Lancar -> Class 1 (Low)
+            1: ('Macet', 2),    # Index 1 -> Macet -> Class 2 (High/Congested)
+            2: ('Padat', 3)     # Index 2 -> Padat -> Class 3 (Medium/Dense)
+        }
+
+        label, class_num = idx_to_label[pred_idx]
         return {
-            'class': pred_class,
-            'label': labels[pred_class],
+            'class': class_num,
+            'label': label,
             'confidence': round(confidence, 3)
         }
     except Exception as e:
         print(f"DNN prediction error: {e}")
+        import traceback
+        traceback.print_exc()
         # Fallback to rule-based
         total = car_count + motorcycle_count + heavy_count
         if total < 50:
-            return {'class': 1, 'label': 'Low', 'confidence': 0.5}
+            return {'class': 1, 'label': 'Lancar', 'confidence': 0.5}
         elif total < 150:
-            return {'class': 2, 'label': 'Medium', 'confidence': 0.5}
+            return {'class': 3, 'label': 'Padat', 'confidence': 0.5}
         else:
-            return {'class': 3, 'label': 'High', 'confidence': 0.5}
+            return {'class': 2, 'label': 'Macet', 'confidence': 0.5}
 
 # Enable cuDNN optimizations
 torch.backends.cudnn.enabled = True
@@ -688,6 +756,42 @@ def draw_stats_overlay(frame, counts):
     return frame
 
 
+def draw_stats_overlay_with_time(frame, counts, time_str):
+    """Draw stats overlay with time info for prediction processing"""
+    # Draw stats on LEFT side (large area) with bigger font
+    box_width = 320
+    box_height = 190
+    margin = 15
+
+    # Semi-transparent background on LEFT
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (margin, margin), (margin + box_width, margin + box_height), (0, 0, 0), -1)
+    cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
+
+    # Draw text with larger font
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.8
+    thickness = 2
+    y_start = margin + 35
+    line_height = 35
+
+    # Time display
+    cv2.putText(frame, f"Time: {time_str}", (margin + 15, y_start),
+                font, font_scale, (255, 0, 255), thickness)  # Magenta
+
+    # Counts
+    cv2.putText(frame, f"Car: {counts.get('car', 0)}", (margin + 15, y_start + line_height),
+                font, font_scale, (255, 100, 100), thickness)
+    cv2.putText(frame, f"Motorcycle: {counts.get('motorcycle', 0)}", (margin + 15, y_start + line_height * 2),
+                font, font_scale, (100, 255, 100), thickness)
+    cv2.putText(frame, f"Heavy: {counts.get('heavy', 0)}", (margin + 15, y_start + line_height * 3),
+                font, font_scale, (100, 100, 255), thickness)
+    cv2.putText(frame, f"Total: {sum(counts.values())}", (margin + 15, y_start + line_height * 4),
+                font, font_scale, (255, 255, 255), thickness)
+
+    return frame
+
+
 def draw_stats_overlay_with_ocr(frame, counts, ocr_text):
     """Draw stats overlay dengan info waktu OCR dan tracking info"""
     global stream_state
@@ -916,8 +1020,8 @@ async def stream_current_video(detection: bool = True):
 @app.post("/api/predict")
 async def predict_video(
     file: UploadFile = File(...),
-    date: Optional[str] = None,
-    hour: Optional[str] = None
+    date: Optional[str] = Form(None),
+    hour: Optional[str] = Form(None)
 ):
     """Process uploaded video with YOLO detection"""
     # Save uploaded file with unique timestamp to avoid conflicts
@@ -938,6 +1042,18 @@ async def predict_video(
             shutil.copyfileobj(file.file, f)
 
         print(f"[PREDICT] Input saved: {temp_input}")
+
+        # Parse user-provided date for day_of_week calculation (used in fallback)
+        # Format expected: YYYY-MM-DD
+        prediction_date = None
+        day_of_week = datetime.now().weekday()  # Default to today
+        if date:
+            try:
+                prediction_date = datetime.strptime(date, "%Y-%m-%d")
+                day_of_week = prediction_date.weekday()
+                print(f"[PREDICT] User provided date: {date}, day_of_week: {day_of_week}")
+            except ValueError:
+                print(f"[PREDICT] Invalid date format: {date}, using current day")
 
         # Process video
         cap = cv2.VideoCapture(str(temp_input))
@@ -971,12 +1087,26 @@ async def predict_video(
         else:
             print(f"[PREDICT] Model loaded on {device}")
 
-        # Use max counts per sample instead of summing all frames (fixes overcounting)
-        total_counts = defaultdict(int)
+        # Per-minute processing variables
+        results_per_minute = []
         frame_count = 0
+        current_minute = None
+        current_time_str = "00:00"
+        minute_counts = {'car': 0, 'motorcycle': 0, 'heavy': 0}
+
+        # Use user-provided hour for 12h→24h conversion (uploaded video may not have filename pattern)
+        # This is important because OCR reads 12-hour format from video timestamp
+        user_hour = int(hour) if hour and hour.isdigit() else None
+        current_hour = user_hour if user_hour is not None else 0
+        print(f"[PREDICT] User provided hour: {user_hour}, using as reference for 12h→24h conversion")
 
         # Tracker untuk video predict (terpisah dari stream)
         predict_tracker = VehicleTracker()
+
+        # Fallback: use frame-based timing if OCR fails
+        ocr_success_count = 0
+        use_frame_timing = False
+        frames_per_minute = fps * 60  # Approximate frames per minute
 
         while True:
             ret, frame = cap.read()
@@ -985,6 +1115,72 @@ async def predict_video(
 
             frame_count += 1
 
+            # OCR time extraction every 30 frames (to reduce processing load)
+            if frame_count % 30 == 0:
+                extracted_time, _ = extract_time_from_frame(frame, last_known_hour=current_hour)
+
+                if extracted_time:
+                    ocr_success_count += 1
+                    # extracted_time is tuple (hour, minute) - FIX: use index access
+                    ocr_hour_12 = extracted_time[0]  # 12-hour format from OCR
+                    ocr_minute = extracted_time[1]
+
+                    # Convert 12h→24h using user-provided hour as reference
+                    new_hour, new_minute = convert_12h_to_24h(ocr_hour_12, ocr_minute, user_hour)
+                    new_time_str = f"{new_hour:02d}:{new_minute:02d}"
+
+                    # Minute changed - save results and reset
+                    if current_minute is not None and new_minute != current_minute:
+                        # Run DNN prediction for this minute
+                        prediction = predict_traffic_density(
+                            car_count=minute_counts['car'],
+                            motorcycle_count=minute_counts['motorcycle'],
+                            heavy_count=minute_counts['heavy'],
+                            hour=current_hour,
+                            day_of_week=datetime.now().weekday()
+                        )
+                        results_per_minute.append({
+                            "time": current_time_str,
+                            "counts": dict(minute_counts),
+                            "prediction": prediction
+                        })
+                        print(f"[PREDICT] Minute {current_time_str} saved: {minute_counts}")
+
+                        # Reset for new minute
+                        minute_counts = {'car': 0, 'motorcycle': 0, 'heavy': 0}
+                        predict_tracker.reset()
+
+                    current_minute = new_minute
+                    current_hour = new_hour
+                    current_time_str = new_time_str
+
+            # Fallback: frame-based minute detection if OCR mostly fails
+            if frame_count > 300 and ocr_success_count < 5:
+                use_frame_timing = True
+
+            if use_frame_timing and frame_count % frames_per_minute == 0:
+                relative_minute = frame_count // frames_per_minute
+                new_time_str = f"Menit {relative_minute}"
+
+                if current_minute is not None:
+                    prediction = predict_traffic_density(
+                        car_count=minute_counts['car'],
+                        motorcycle_count=minute_counts['motorcycle'],
+                        heavy_count=minute_counts['heavy'],
+                        hour=datetime.now().hour,
+                        day_of_week=datetime.now().weekday()
+                    )
+                    results_per_minute.append({
+                        "time": current_time_str,
+                        "counts": dict(minute_counts),
+                        "prediction": prediction
+                    })
+                    minute_counts = {'car': 0, 'motorcycle': 0, 'heavy': 0}
+                    predict_tracker.reset()
+
+                current_minute = relative_minute
+                current_time_str = new_time_str
+
             # Process every frame with detection if model is available
             if yolo_model:
                 frame, detected_boxes = process_frame_with_detection(frame, yolo_model, roi_polygon, draw_stats=True)
@@ -992,12 +1188,28 @@ async def predict_video(
                 # Update tracker dan dapatkan new counts
                 new_counts = predict_tracker.update_tracks(detected_boxes)
                 for k, v in new_counts.items():
-                    total_counts[k] += v
+                    minute_counts[k] += v
 
-                # Draw stats on frame
-                draw_stats_overlay(frame, total_counts)
+                # Draw stats on frame with current minute counts and time
+                frame = draw_stats_overlay_with_time(frame, minute_counts, current_time_str)
 
             out.write(frame)
+
+        # Save last minute if has data
+        if any(minute_counts.values()):
+            prediction = predict_traffic_density(
+                car_count=minute_counts['car'],
+                motorcycle_count=minute_counts['motorcycle'],
+                heavy_count=minute_counts['heavy'],
+                hour=current_hour,
+                day_of_week=datetime.now().weekday()
+            )
+            results_per_minute.append({
+                "time": current_time_str,
+                "counts": dict(minute_counts),
+                "prediction": prediction
+            })
+            print(f"[PREDICT] Final minute {current_time_str} saved: {minute_counts}")
 
         cap.release()
         cap = None
@@ -1005,8 +1217,17 @@ async def predict_video(
         out = None
 
         print(f"[PREDICT] Output saved: {temp_output}, exists: {temp_output.exists()}")
+        print(f"[PREDICT] Total minutes processed: {len(results_per_minute)}")
 
-        # Clean up old output files (keep only last 5)
+        # Copy output to persistent directory (accessible from host)
+        persistent_output = OUTPUT_DIR / temp_output.name
+        try:
+            shutil.copy2(str(temp_output), str(persistent_output))
+            print(f"[PREDICT] Output copied to persistent storage: {persistent_output}")
+        except Exception as e:
+            print(f"[PREDICT] Warning: Could not copy to persistent storage: {e}")
+
+        # Clean up old output files in TEMP_DIR (keep only last 5)
         output_files = sorted(TEMP_DIR.glob("output_*.mp4"), key=lambda p: p.stat().st_mtime)
         for old_file in output_files[:-5]:
             try:
@@ -1014,23 +1235,35 @@ async def predict_video(
             except:
                 pass
 
-        # Get DNN traffic density prediction
-        now = datetime.now()
-        traffic_prediction = predict_traffic_density(
-            car_count=total_counts['car'],
-            motorcycle_count=total_counts['motorcycle'],
-            heavy_count=total_counts['heavy'],
-            hour=now.hour,
-            day_of_week=now.weekday()
-        )
+        # Clean up old output files in OUTPUT_DIR (keep only last 10)
+        persistent_files = sorted(OUTPUT_DIR.glob("output_*.mp4"), key=lambda p: p.stat().st_mtime)
+        for old_file in persistent_files[:-10]:
+            try:
+                old_file.unlink()
+            except:
+                pass
+
+        # Calculate totals for summary
+        total_counts = {'car': 0, 'motorcycle': 0, 'heavy': 0}
+        for result in results_per_minute:
+            for k, v in result['counts'].items():
+                total_counts[k] += v
 
         return JSONResponse({
             "success": True,
             "message": "Video processed successfully",
-            "total_counts": dict(total_counts),
+            "results_per_minute": results_per_minute,
+            "total_minutes": len(results_per_minute),
+            "total_counts": total_counts,
             "frames_processed": frame_count,
             "model_loaded": yolo_model is not None,
-            "traffic_prediction": traffic_prediction
+            # Metadata: user-provided parameters used in processing
+            "prediction_metadata": {
+                "date": date,  # Used for day_of_week in fallback timing
+                "hour": hour,  # Used for 12h→24h OCR conversion
+                "day_of_week": day_of_week,  # 0=Monday, 6=Sunday
+                "ocr_success_rate": f"{ocr_success_count}/{frame_count // 30}" if frame_count > 0 else "N/A"
+            }
         })
 
     except Exception as e:
