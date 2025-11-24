@@ -5,7 +5,7 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y \
 
 COPY requirements.txt .
 
-# Install CPU-only versions
+# Install regular packages from PyPI
 RUN pip3 install --no-cache-dir \
     fastapi==0.104.1 \
     uvicorn==0.24.0 \
@@ -25,12 +25,14 @@ RUN pip3 install --no-cache-dir \
     numpy==1.24.3 \
     aiofiles==23.2.1 \
     pytesseract==0.3.10 \
-    torch --index-url https://download.pytorch.org/whl/cpu \
-    torchvision --index-url https://download.pytorch.org/whl/cpu \
-    ultralytics==8.0.200
+    ultralytics>=8.1.0
+
+# Install PyTorch CPU versions (separate to avoid --index-url conflict)
+RUN pip3 install --no-cache-dir \
+    torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
 COPY . .
 
-EXPOSE 8002
+EXPOSE 8001
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]

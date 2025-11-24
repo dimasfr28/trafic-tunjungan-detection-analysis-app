@@ -2,8 +2,11 @@ import os
 import re
 import cv2
 import torch
+import torch.nn as nn
 import numpy as np
 import asyncio
+import pickle
+import math
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Generator
@@ -40,9 +43,133 @@ app.add_middleware(
 
 # Configuration
 MODEL_PATH = "/app/models/YOLOv8s/train/weights/best.pt"
+DNN_MODEL_PATH = "/app/models/best_deep_neural_network_sgd.pkl"
 VIDEO_DIR = Path("/app/assets/video/input_vidio")
 TEMP_DIR = Path("/tmp/video_processing")
 TEMP_DIR.mkdir(exist_ok=True)
+
+
+# DNN Model for Traffic Density Prediction
+class TrafficDNN(nn.Module):
+    """Deep Neural Network for traffic density classification"""
+    def __init__(self):
+        super(TrafficDNN, self).__init__()
+        self.network = nn.Sequential(
+            nn.Linear(12, 128),
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(128, 64),
+            nn.BatchNorm1d(64),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(64, 32),
+            nn.BatchNorm1d(32),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(32, 3)
+        )
+
+    def forward(self, x):
+        return self.network(x)
+
+
+# Global DNN model instance
+dnn_model = None
+
+
+def get_dnn_model():
+    """Load DNN model for traffic prediction"""
+    global dnn_model
+    if dnn_model is None:
+        try:
+            dnn_model = TrafficDNN()
+            if os.path.exists(DNN_MODEL_PATH):
+                state_dict = pickle.load(open(DNN_MODEL_PATH, 'rb'))
+                dnn_model.load_state_dict(state_dict)
+                dnn_model.eval()
+                print(f"DNN model loaded from {DNN_MODEL_PATH}")
+            else:
+                print(f"DNN model not found at {DNN_MODEL_PATH}, using random weights")
+        except Exception as e:
+            print(f"Error loading DNN model: {e}")
+            dnn_model = None
+    return dnn_model
+
+
+def predict_traffic_density(car_count: int, motorcycle_count: int, heavy_count: int,
+                           hour: int = 12, day_of_week: int = 0) -> dict:
+    """
+    Predict traffic density class using DNN model
+    Returns: {'class': 1|2|3, 'label': 'Low'|'Medium'|'High', 'confidence': float}
+    """
+    model = get_dnn_model()
+
+    # If model not available, use rule-based fallback
+    if model is None:
+        total = car_count + motorcycle_count + heavy_count
+        if total < 50:
+            return {'class': 1, 'label': 'Low', 'confidence': 0.8}
+        elif total < 150:
+            return {'class': 2, 'label': 'Medium', 'confidence': 0.8}
+        else:
+            return {'class': 3, 'label': 'High', 'confidence': 0.8}
+
+    try:
+        # Feature engineering (12 features)
+        total = car_count + motorcycle_count + heavy_count
+        total = max(total, 1)  # Avoid division by zero
+
+        # Normalize counts (approximate normalization based on typical ranges)
+        car_norm = car_count / 100.0
+        motorcycle_norm = motorcycle_count / 200.0
+        heavy_norm = heavy_count / 50.0
+        total_norm = total / 300.0
+
+        # Ratios
+        car_ratio = car_count / total
+        motorcycle_ratio = motorcycle_count / total
+        heavy_ratio = heavy_count / total
+
+        # Cyclical time encoding
+        hour_sin = math.sin(2 * math.pi * hour / 24)
+        hour_cos = math.cos(2 * math.pi * hour / 24)
+        day_sin = math.sin(2 * math.pi * day_of_week / 7)
+        day_cos = math.cos(2 * math.pi * day_of_week / 7)
+
+        # Is weekend
+        is_weekend = 1.0 if day_of_week >= 5 else 0.0
+
+        # Create feature tensor
+        features = torch.tensor([[
+            car_norm, motorcycle_norm, heavy_norm, total_norm,
+            car_ratio, motorcycle_ratio, heavy_ratio,
+            hour_sin, hour_cos, day_sin, day_cos, is_weekend
+        ]], dtype=torch.float32)
+
+        # Predict
+        with torch.no_grad():
+            output = model(features)
+            probs = torch.softmax(output, dim=1)
+            pred_class = torch.argmax(probs, dim=1).item() + 1  # Classes are 1, 2, 3
+            confidence = probs[0, pred_class - 1].item()
+
+        labels = {1: 'Low', 2: 'Medium', 3: 'High'}
+        return {
+            'class': pred_class,
+            'label': labels[pred_class],
+            'confidence': round(confidence, 3)
+        }
+    except Exception as e:
+        print(f"DNN prediction error: {e}")
+        # Fallback to rule-based
+        total = car_count + motorcycle_count + heavy_count
+        if total < 50:
+            return {'class': 1, 'label': 'Low', 'confidence': 0.5}
+        elif total < 150:
+            return {'class': 2, 'label': 'Medium', 'confidence': 0.5}
+        else:
+            return {'class': 3, 'label': 'High', 'confidence': 0.5}
 
 # Enable cuDNN optimizations
 torch.backends.cudnn.enabled = True
@@ -844,6 +971,7 @@ async def predict_video(
         else:
             print(f"[PREDICT] Model loaded on {device}")
 
+        # Use max counts per sample instead of summing all frames (fixes overcounting)
         total_counts = defaultdict(int)
         frame_count = 0
 
@@ -886,12 +1014,23 @@ async def predict_video(
             except:
                 pass
 
+        # Get DNN traffic density prediction
+        now = datetime.now()
+        traffic_prediction = predict_traffic_density(
+            car_count=total_counts['car'],
+            motorcycle_count=total_counts['motorcycle'],
+            heavy_count=total_counts['heavy'],
+            hour=now.hour,
+            day_of_week=now.weekday()
+        )
+
         return JSONResponse({
             "success": True,
             "message": "Video processed successfully",
             "total_counts": dict(total_counts),
             "frames_processed": frame_count,
-            "model_loaded": yolo_model is not None
+            "model_loaded": yolo_model is not None,
+            "traffic_prediction": traffic_prediction
         })
 
     except Exception as e:

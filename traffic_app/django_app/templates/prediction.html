@@ -72,6 +72,21 @@
                         <span class="result-value" id="resultFrames">0</span>
                     </div>
                 </div>
+
+                <!-- Traffic Density Prediction -->
+                <div class="traffic-prediction" id="trafficPrediction">
+                    <h3>Traffic Density Prediction (DNN)</h3>
+                    <div class="prediction-display">
+                        <div class="density-indicator" id="densityIndicator">
+                            <span class="density-class" id="densityClass">-</span>
+                            <span class="density-label" id="densityLabel">Waiting...</span>
+                        </div>
+                        <div class="prediction-confidence">
+                            <span class="confidence-label">Confidence:</span>
+                            <span class="confidence-value" id="confidenceValue">--%</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -176,14 +191,15 @@ document.addEventListener('DOMContentLoaded', function() {
         predictionResults.style.display = 'none';
 
         try {
-            statusDetail.textContent = 'Uploading video...';
+            statusDetail.textContent = 'Uploading & Processing with YOLO detection...';
 
+            // Start fetch - upload is fast, processing takes time
             const response = await fetch('http://localhost:8001/api/predict', {
                 method: 'POST',
                 body: formData
             });
 
-            statusDetail.textContent = 'Processing with YOLO detection...';
+            statusDetail.textContent = 'Finalizing results...';
 
             const data = await response.json();
 
@@ -194,6 +210,30 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.getElementById('resultMotorcycle').textContent = data.total_counts.motorcycle || 0;
                 document.getElementById('resultHeavy').textContent = data.total_counts.heavy || 0;
                 document.getElementById('resultFrames').textContent = data.frames_processed;
+
+                // Display traffic density prediction
+                if (data.traffic_prediction) {
+                    const pred = data.traffic_prediction;
+                    const densityIndicator = document.getElementById('densityIndicator');
+                    const densityClass = document.getElementById('densityClass');
+                    const densityLabel = document.getElementById('densityLabel');
+                    const confidenceValue = document.getElementById('confidenceValue');
+
+                    // Set class and label
+                    densityClass.textContent = pred.class;
+                    densityLabel.textContent = pred.label;
+                    confidenceValue.textContent = Math.round(pred.confidence * 100) + '%';
+
+                    // Set color based on class
+                    densityIndicator.className = 'density-indicator';
+                    if (pred.class === 1) {
+                        densityIndicator.classList.add('density-low');
+                    } else if (pred.class === 2) {
+                        densityIndicator.classList.add('density-medium');
+                    } else {
+                        densityIndicator.classList.add('density-high');
+                    }
+                }
 
                 // Show model status warning if model failed to load
                 if (!data.model_loaded) {

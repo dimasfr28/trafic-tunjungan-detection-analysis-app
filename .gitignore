@@ -1,2 +1,16 @@
+# neurocomputing folder
 neurocomputing/assets/video/input_vidio/*
 assets/video/input_vidio/
+
+# Claude
+.claude/
+CLAUDE.md
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Temp files
+new_task.txt
+traffic_app/fastapi_service/models/

@@ -72,6 +72,21 @@
                         <span class="result-value" id="resultFrames">0</span>
                     </div>
                 </div>
+
+                <!-- Traffic Density Prediction -->
+                <div class="traffic-prediction" id="trafficPrediction">
+                    <h3>Traffic Density Prediction (DNN)</h3>
+                    <div class="prediction-display">
+                        <div class="density-indicator" id="densityIndicator">
+                            <span class="density-class" id="densityClass">-</span>
+                            <span class="density-label" id="densityLabel">Waiting...</span>
+                        </div>
+                        <div class="prediction-confidence">
+                            <span class="confidence-label">Confidence:</span>
+                            <span class="confidence-value" id="confidenceValue">--%</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -176,14 +191,15 @@ document.addEventListener('DOMContentLoaded', function() {
         predictionResults.style.display = 'none';
 
         try {
-            statusDetail.textContent = 'Uploading video...';
+            statusDetail.textContent = 'Uploading & Processing with YOLO detection...';
 
+            // Start fetch - upload is fast, processing takes time
             const response = await fetch('http://localhost:8001/api/predict', {
                 method: 'POST',
                 body: formData
             });
 
-            statusDetail.textContent = 'Processing with YOLO detection...';
+            statusDetail.textContent = 'Finalizing results...';
 
             const data = await response.json();
 
@@ -195,12 +211,46 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.getElementById('resultHeavy').textContent = data.total_counts.heavy || 0;
                 document.getElementById('resultFrames').textContent = data.frames_processed;
 
-                // Show output video
-                videoPlaceholder.style.display = 'none';
-                videoOutput.style.display = 'block';
-                outputControls.style.display = 'flex';
+                // Display traffic density prediction
+                if (data.traffic_prediction) {
+                    const pred = data.traffic_prediction;
+                    const densityIndicator = document.getElementById('densityIndicator');
+                    const densityClass = document.getElementById('densityClass');
+                    const densityLabel = document.getElementById('densityLabel');
+                    const confidenceValue = document.getElementById('confidenceValue');
 
-                outputStream.src = 'http://localhost:8001/api/predict/stream';
+                    // Set class and label
+                    densityClass.textContent = pred.class;
+                    densityLabel.textContent = pred.label;
+                    confidenceValue.textContent = Math.round(pred.confidence * 100) + '%';
+
+                    // Set color based on class
+                    densityIndicator.className = 'density-indicator';
+                    if (pred.class === 1) {
+                        densityIndicator.classList.add('density-low');
+                    } else if (pred.class === 2) {
+                        densityIndicator.classList.add('density-medium');
+                    } else {
+                        densityIndicator.classList.add('density-high');
+                    }
+                }
+
+                // Show model status warning if model failed to load
+                if (!data.model_loaded) {
+                    alert('Warning: YOLO model failed to load. Detection results may be inaccurate. Check server logs for details.');
+                }
+
+                // Show output video with slight delay to ensure file is ready
+                setTimeout(() => {
+                    videoPlaceholder.style.display = 'none';
+                    videoOutput.style.display = 'block';
+                    outputControls.style.display = 'flex';
+                    // Reset videoOutput content in case of previous error
+                    videoOutput.innerHTML = '<img id="outputStream" src="" alt="Output Video" class="video-frame">';
+                    // Re-get the element after resetting
+                    const newOutputStream = document.getElementById('outputStream');
+                    newOutputStream.src = 'http://localhost:8001/api/predict/stream?' + Date.now();
+                }, 500);
             } else {
                 alert('Error: ' + data.error);
             }
@@ -214,8 +264,40 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Replay button
     document.getElementById('replayBtn').addEventListener('click', function() {
-        outputStream.src = 'http://localhost:8001/api/predict/stream?' + Date.now();
+        loadOutputStream();
     });
+
+    // Stream loading with retry
+    let retryCount = 0;
+    const maxRetries = 3;
+
+    function loadOutputStream() {
+        retryCount = 0;
+        outputStream.onerror = null;
+        outputStream.onload = null;
+
+        outputStream.onload = function() {
+            console.log('Stream loaded successfully');
+            retryCount = 0;
+        };
+
+        outputStream.onerror = function() {
+            console.error('Stream error, retry:', retryCount);
+            if (retryCount < maxRetries) {
+                retryCount++;
+                setTimeout(() => {
+                    outputStream.src = 'http://localhost:8001/api/predict/stream?' + Date.now();
+                }, 1000);
+            } else {
+                videoOutput.innerHTML = '<p class="stream-error">Failed to load video stream after ' + maxRetries + ' retries. Please click Replay to try again.</p>';
+            }
+        };
+
+        outputStream.src = 'http://localhost:8001/api/predict/stream?' + Date.now();
+    }
+
+    // Initial load function for after prediction
+    window.loadPredictionStream = loadOutputStream;
 });
 </script>
 {% endblock %}

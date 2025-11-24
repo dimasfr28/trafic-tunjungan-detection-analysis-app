@@ -408,11 +408,11 @@ body {
 }
 
 .charts-2-1 {
-    grid-template-columns: 2fr 1fr;
+    grid-template-columns: 3fr 2fr;
 }
 
 .charts-1-2 {
-    grid-template-columns: 1fr 2fr;
+    grid-template-columns: 2fr 3fr;
 }
 
 .chart-card {
@@ -420,6 +420,9 @@ body {
     border-radius: 12px;
     padding: 1.5rem;
     border: 1px solid rgba(255, 255, 255, 0.1);
+    min-height: 380px;
+    display: flex;
+    flex-direction: column;
 }
 
 .chart-card h3 {
@@ -430,11 +433,25 @@ body {
 
 .chart-card canvas {
     width: 100% !important;
-    height: 300px !important;
+    height: 100% !important;
+    min-height: 280px;
+    flex: 1;
+}
+
+.chart-large {
+    min-height: 420px;
 }
 
 .chart-large canvas {
-    height: 350px !important;
+    min-height: 320px;
+}
+
+.chart-small {
+    min-height: 380px;
+}
+
+.chart-small canvas {
+    min-height: 280px;
 }
 
 /* Heatmap */
@@ -641,6 +658,104 @@ body {
 }
 
 .result-value {
+    font-weight: 700;
+    color: var(--primary);
+}
+
+/* Traffic Prediction Display */
+.traffic-prediction {
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.traffic-prediction h3 {
+    font-size: 1rem;
+    margin-bottom: 1rem;
+    color: var(--gray);
+}
+
+.prediction-display {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.density-indicator {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.5rem;
+    border-radius: 12px;
+    background: rgba(30, 41, 59, 0.8);
+    flex: 1;
+}
+
+.density-indicator.density-low {
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(34, 197, 94, 0.1));
+    border: 1px solid rgba(34, 197, 94, 0.5);
+}
+
+.density-indicator.density-medium {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.3), rgba(245, 158, 11, 0.1));
+    border: 1px solid rgba(245, 158, 11, 0.5);
+}
+
+.density-indicator.density-high {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.3), rgba(239, 68, 68, 0.1));
+    border: 1px solid rgba(239, 68, 68, 0.5);
+}
+
+.density-class {
+    font-size: 2rem;
+    font-weight: 800;
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.density-low .density-class {
+    color: var(--success);
+    background: rgba(34, 197, 94, 0.2);
+}
+
+.density-medium .density-class {
+    color: var(--warning);
+    background: rgba(245, 158, 11, 0.2);
+}
+
+.density-high .density-class {
+    color: var(--danger);
+    background: rgba(239, 68, 68, 0.2);
+}
+
+.density-label {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #f1f5f9;
+}
+
+.prediction-confidence {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: rgba(30, 41, 59, 0.8);
+    border-radius: 8px;
+}
+
+.confidence-label {
+    font-size: 0.75rem;
+    color: var(--gray);
+}
+
+.confidence-value {
+    font-size: 1.25rem;
     font-weight: 700;
     color: var(--primary);
 }

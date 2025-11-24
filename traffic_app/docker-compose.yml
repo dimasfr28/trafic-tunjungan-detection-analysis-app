@@ -10,7 +10,7 @@ services:
       - "8001:8001"
     volumes:
       - ./django_app:/app
-      - /home/dimas/neurocomputing/assets:/app/assets:ro
+      - ../assets:/app/assets:ro
     environment:
       - DEBUG=1
       - FASTAPI_URL=http://fastapi:8002
@@ -29,8 +29,9 @@ services:
       - "8002:8002"
     volumes:
       - ./fastapi_service:/app
-      - /home/dimas/neurocomputing/assets:/app/assets:ro
-      - /home/dimas/neurocomputing/NEURO_MODELING:/app/models:ro
+      - ../assets:/app/assets:ro
+      - ../NEURO_MODELING/YOLOv8s:/app/models/YOLOv8s:ro
+      - ../NEURO_MODELING/best_deep_neural_network_sgd.pkl:/app/models/best_deep_neural_network_sgd.pkl:ro
     environment:
       - CUDA_VISIBLE_DEVICES=0
     deploy:
