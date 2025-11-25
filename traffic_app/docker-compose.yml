@@ -3,6 +3,7 @@ services:
     build:
       context: ./django_app
       dockerfile: Dockerfile
+      network: host
     container_name: traffic_django
     ports:
       - "8001:8001"
@@ -22,6 +23,7 @@ services:
     build:
       context: ./fastapi_service
       dockerfile: Dockerfile
+      network: host
     container_name: traffic_fastapi
     ports:
       - "8002:8002"
