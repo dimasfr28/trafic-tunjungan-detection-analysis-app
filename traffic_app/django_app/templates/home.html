@@ -57,6 +57,35 @@
         </div>
     </div>
 </div>
+
+<!-- Traffic Data Table Section (Outside home-container) -->
+<div class="traffic-data-section">
+    <div class="traffic-data-container">
+        <div class="data-header">
+            <h3>Data Kendaraan Per Menit</h3>
+            <span class="data-info" id="dataInfo">Loading...</span>
+        </div>
+        <div class="table-wrapper">
+            <table class="traffic-table">
+                <thead>
+                    <tr>
+                        <th>Waktu</th>
+                        <th>Motor</th>
+                        <th>Mobil</th>
+                        <th>Heavy</th>
+                        <th>Total</th>
+                        <th>Kepadatan</th>
+                    </tr>
+                </thead>
+                <tbody id="trafficTableBody">
+                    <tr>
+                        <td colspan="6" class="text-center">Menunggu data...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -125,6 +154,61 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Reload video every 5 minutes to get new hour video if needed
     setInterval(loadVideoStream, 300000);
+
+    // ==== Traffic Data Table ====
+    const trafficTableBody = document.getElementById('trafficTableBody');
+    const dataInfo = document.getElementById('dataInfo');
+
+    async function loadTrafficData() {
+        try {
+            const response = await fetch('http://localhost:8002/api/stream/data?limit=20');
+            const data = await response.json();
+
+            if (data.success && data.history && data.history.length > 0) {
+                // Update info
+                dataInfo.textContent = `${data.total_minutes} menit terakhir`;
+
+                // Clear table
+                trafficTableBody.innerHTML = '';
+
+                // Populate table rows
+                data.history.forEach(row => {
+                    const tr = document.createElement('tr');
+                    const total = row.counts.car + row.counts.motorcycle + row.counts.heavy;
+
+                    // Get density class for styling
+                    let densityClass = 'density-lancar';
+                    const label = row.prediction.label.toLowerCase();
+                    if (label === 'macet') densityClass = 'density-macet';
+                    else if (label === 'padat') densityClass = 'density-padat';
+
+                    tr.innerHTML = `
+                        <td><strong>${row.time}</strong></td>
+                        <td>${row.counts.motorcycle}</td>
+                        <td>${row.counts.car}</td>
+                        <td>${row.counts.heavy}</td>
+                        <td><strong>${total}</strong></td>
+                        <td>
+                            <span class="density-badge ${densityClass}">
+                                ${row.prediction.label}
+                            </span>
+                        </td>
+                    `;
+                    trafficTableBody.appendChild(tr);
+                });
+            } else {
+                trafficTableBody.innerHTML = '<tr><td colspan="6" class="text-center">Belum ada data</td></tr>';
+                dataInfo.textContent = 'Menunggu data...';
+            }
+        } catch (error) {
+            console.error('Error loading traffic data:', error);
+            trafficTableBody.innerHTML = '<tr><td colspan="6" class="text-center">Error loading data</td></tr>';
+        }
+    }
+
+    // Load traffic data on start and refresh every 30 seconds
+    loadTrafficData();
+    setInterval(loadTrafficData, 30000);
 });
 </script>
 {% endblock %}

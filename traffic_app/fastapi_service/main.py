@@ -120,23 +120,25 @@ def predict_traffic_density(car_count: int, motorcycle_count: int, heavy_count: 
     12. vehicle_variety
 
     Label Encoding (from LabelEncoder alphabetical order):
-    - 0 = Lancar (Low/Smooth traffic)
-    - 1 = Macet (High/Congested)
-    - 2 = Padat (Medium/Dense)
+    - 0 = Lancar (Low/Smooth traffic) -> Class 1
+    - 1 = Macet (High/Congested) -> Class 3
+    - 2 = Padat (Medium/Dense) -> Class 2
 
-    Returns: {'class': 1|2|3, 'label': 'Lancar'|'Macet'|'Padat', 'confidence': float}
+    Returns: {'class': 1|2|3, 'label': 'Lancar'|'Padat'|'Macet', 'confidence': float}
+    Class mapping: 1=Lancar, 2=Padat, 3=Macet
     """
     model = get_dnn_model()
 
     # If model not available, use rule-based fallback
+    # Class mapping: 1=Lancar, 2=Padat, 3=Macet
     if model is None:
         total = car_count + motorcycle_count + heavy_count
         if total < 50:
             return {'class': 1, 'label': 'Lancar', 'confidence': 0.8}
         elif total < 150:
-            return {'class': 3, 'label': 'Padat', 'confidence': 0.8}
+            return {'class': 2, 'label': 'Padat', 'confidence': 0.8}
         else:
-            return {'class': 2, 'label': 'Macet', 'confidence': 0.8}
+            return {'class': 3, 'label': 'Macet', 'confidence': 0.8}
 
     try:
         # Feature engineering - EXACTLY as in notebook
@@ -213,11 +215,11 @@ def predict_traffic_density(car_count: int, motorcycle_count: int, heavy_count: 
             confidence = probs[0, pred_idx].item()
 
         # Label mapping from LabelEncoder (alphabetical: Lancar, Macet, Padat)
-        # Map to class numbers that match original cluster labels
+        # Map to consistent class numbers: 1=Lancar, 2=Padat, 3=Macet
         idx_to_label = {
-            0: ('Lancar', 1),   # Index 0 -> Lancar -> Class 1 (Low)
-            1: ('Macet', 2),    # Index 1 -> Macet -> Class 2 (High/Congested)
-            2: ('Padat', 3)     # Index 2 -> Padat -> Class 3 (Medium/Dense)
+            0: ('Lancar', 1),   # Index 0 -> Lancar -> Class 1 (Low/Smooth)
+            1: ('Macet', 3),    # Index 1 -> Macet -> Class 3 (High/Congested)
+            2: ('Padat', 2)     # Index 2 -> Padat -> Class 2 (Medium/Dense)
         }
 
         label, class_num = idx_to_label[pred_idx]
@@ -231,13 +233,14 @@ def predict_traffic_density(car_count: int, motorcycle_count: int, heavy_count: 
         import traceback
         traceback.print_exc()
         # Fallback to rule-based
+        # Class mapping: 1=Lancar, 2=Padat, 3=Macet
         total = car_count + motorcycle_count + heavy_count
         if total < 50:
             return {'class': 1, 'label': 'Lancar', 'confidence': 0.5}
         elif total < 150:
-            return {'class': 3, 'label': 'Padat', 'confidence': 0.5}
+            return {'class': 2, 'label': 'Padat', 'confidence': 0.5}
         else:
-            return {'class': 2, 'label': 'Macet', 'confidence': 0.5}
+            return {'class': 3, 'label': 'Macet', 'confidence': 0.5}
 
 # Enable cuDNN optimizations
 torch.backends.cudnn.enabled = True
@@ -388,15 +391,25 @@ class VehicleTracker:
                     self.counted_ids.add(matched_id)
 
                     # Map class_name ke kategori
+                    # Model YOLO hanya punya 3 class: 'motorcycle', 'heavy', 'car'
                     class_lower = class_name.lower()
-                    if 'car' in class_lower:
-                        new_counts['car'] += 1
-                    elif 'motor' in class_lower or 'bike' in class_lower:
-                        new_counts['motorcycle'] += 1
-                    elif 'truck' in class_lower or 'bus' in class_lower:
-                        new_counts['heavy'] += 1
 
-                    print(f"   ✅ COUNTED: ID={matched_id} Class='{class_name}' (tracked {len(track['positions'])} frames)")
+                    if 'motorcycle' in class_lower:
+                        new_counts['motorcycle'] += 1
+                        counted_as = 'motorcycle'
+                    elif 'heavy' in class_lower:
+                        new_counts['heavy'] += 1
+                        counted_as = 'heavy'
+                    elif 'car' in class_lower:
+                        new_counts['car'] += 1
+                        counted_as = 'car'
+                    else:
+                        # Class tidak dikenali - log untuk debugging
+                        print(f"   ⚠️  UNRECOGNIZED CLASS: '{class_name}' - Defaulting to car")
+                        new_counts['car'] += 1
+                        counted_as = 'car (unknown)'
+
+                    print(f"   ✅ COUNTED: ID={matched_id} Class='{class_name}' → {counted_as} (tracked {len(track['positions'])} frames)")
 
             else:
                 # Create new track
@@ -438,6 +451,8 @@ class StreamState:
     """Global state untuk tracking OCR dan counting per stream"""
     def __init__(self):
         self.tracker = VehicleTracker()
+        self.minute_history = []  # Store last N minutes data with predictions
+        self.max_history = 60  # Keep last 60 minutes
         self.reset()
 
     def reset(self):
@@ -454,10 +469,46 @@ class StreamState:
             return False
         return new_minute != self.current_minute
 
+    def save_current_minute_data(self, hour: int, minute: int):
+        """Save current minute data with DNN prediction before reset"""
+        if any(self.minute_counts.values()):
+            # Get DNN prediction
+            prediction = predict_traffic_density(
+                car_count=self.minute_counts['car'],
+                motorcycle_count=self.minute_counts['motorcycle'],
+                heavy_count=self.minute_counts['heavy'],
+                hour=hour,
+                day_of_week=datetime.now().weekday()
+            )
+
+            minute_data = {
+                'time': f"{hour:02d}:{minute:02d}",
+                'hour': hour,
+                'minute': minute,
+                'counts': dict(self.minute_counts),
+                'prediction': prediction,
+                'timestamp': datetime.now().isoformat()
+            }
+
+            self.minute_history.append(minute_data)
+
+            # Keep only last max_history entries
+            if len(self.minute_history) > self.max_history:
+                self.minute_history.pop(0)
+
+            print(f"[STREAM] Saved minute data: {minute_data['time']} - {self.minute_counts} - {prediction['label']}")
+
     def reset_for_new_minute(self):
         """Reset counting dan tracker untuk menit baru"""
         self.minute_counts = {'car': 0, 'motorcycle': 0, 'heavy': 0}
         self.tracker.reset()
+
+    def get_minute_history(self, limit: int = None):
+        """Get minute history data (most recent first)"""
+        history = list(reversed(self.minute_history))  # Most recent first
+        if limit:
+            return history[:limit]
+        return history
 
 
 # Global stream state
@@ -536,21 +587,46 @@ def extract_time_from_frame(frame, roi=None, last_known_hour: int = 0):
 
 
 def convert_12h_to_24h(ocr_hour: int, ocr_minute: int, file_hour: int = None):
-    """Convert 12-hour format ke 24-hour berdasarkan file hour"""
+    """
+    Convert 12-hour format ke 24-hour berdasarkan file hour sebagai referensi.
+
+    Logic:
+    - File hour adalah 24h format dari filename (ground truth)
+    - OCR hour adalah 12h format dari video timestamp
+    - Kita gunakan file_hour untuk menentukan AM/PM
+
+    Examples:
+    - File: 11:XX (AM), OCR: 11:XX → 11:XX (AM, no change)
+    - File: 23:XX (PM), OCR: 11:XX → 23:XX (PM, add 12)
+    - File: 01:XX (AM), OCR: 1:XX → 01:XX (AM, no change)
+    - File: 13:XX (PM), OCR: 1:XX → 13:XX (PM, add 12)
+    """
     if file_hour is None:
         return ocr_hour, ocr_minute
 
-    # Jika file hour >= 12 dan OCR hour < 12, tambahkan 12
-    if file_hour >= 12 and ocr_hour < 12:
+    # Determine if file_hour is AM (0-11) or PM (12-23)
+    is_pm = file_hour >= 12
+
+    # OCR hour is in 12h format (1-12)
+    # Convert to 24h based on file hour's AM/PM status
+    if is_pm:
+        # PM case (12:00 - 23:59)
         if ocr_hour == 12:
-            return ocr_hour, ocr_minute
-        return ocr_hour + 12, ocr_minute
+            # 12:XX PM stays as 12:XX
+            result_hour = 12
+        else:
+            # 1:XX PM → 13:XX, 11:XX PM → 23:XX
+            result_hour = ocr_hour + 12
+    else:
+        # AM case (00:00 - 11:59)
+        if ocr_hour == 12:
+            # 12:XX AM → 00:XX (midnight)
+            result_hour = 0
+        else:
+            # 1:XX AM → 01:XX, 11:XX AM → 11:XX
+            result_hour = ocr_hour
 
-    # Jika file hour < 12 dan OCR hour adalah 12
-    if file_hour < 12 and ocr_hour == 12:
-        return 0, ocr_minute
-
-    return ocr_hour, ocr_minute
+    return result_hour, ocr_minute
 
 
 def get_model():
@@ -569,7 +645,7 @@ def get_model():
 
 
 def get_video_files():
-    """Get all video files sorted by time"""
+    """Get all video files sorted by datetime"""
     videos = []
     print(f"[DEBUG] Looking for videos in: {VIDEO_DIR}")
     print(f"[DEBUG] VIDEO_DIR exists: {VIDEO_DIR.exists()}")
@@ -582,50 +658,93 @@ def get_video_files():
     print(f"[DEBUG] Found {len(all_files)} mp4 files")
 
     for f in all_files:
+        # Parse: screen_recording_20251105_120456_seg2.mp4
+        # Format: YYYYMMDD_HHMMSS
         match = re.search(r'(\d{8})_(\d{6})', f.name)
         if match:
-            time_str = match.group(2)
+            date_str = match.group(1)  # YYYYMMDD
+            time_str = match.group(2)  # HHMMSS
+
+            # Parse full datetime
+            year = int(date_str[:4])
+            month = int(date_str[4:6])
+            day = int(date_str[6:8])
             hour = int(time_str[:2])
             minute = int(time_str[2:4])
-            videos.append({
-                'path': str(f),
-                'name': f.name,
-                'hour': hour,
-                'minute': minute
-            })
-            print(f"[DEBUG] Video found: {f.name} -> hour={hour}, minute={minute}")
+            second = int(time_str[4:6])
+
+            try:
+                dt = datetime(year, month, day, hour, minute, second)
+                videos.append({
+                    'path': str(f),
+                    'name': f.name,
+                    'datetime': dt,
+                    'hour': hour,
+                    'minute': minute
+                })
+                print(f"[DEBUG] Video found: {f.name} -> datetime={dt}")
+            except ValueError as e:
+                print(f"[DEBUG] Video skipped (invalid date): {f.name}, error: {e}")
         else:
             print(f"[DEBUG] Video skipped (no match): {f.name}")
 
     print(f"[DEBUG] Total valid videos: {len(videos)}")
-    return sorted(videos, key=lambda x: (x['hour'], x['minute']))
+    # Sort by datetime (newest first for easier finding of recent videos)
+    return sorted(videos, key=lambda x: x['datetime'], reverse=True)
 
 
 def get_nearest_videos(current_hour: int, current_minute: int):
-    """Get videos nearest to current time"""
+    """
+    Get ALL videos with hour closest to current time (from all dates).
+    Strategy:
+    1. Calculate time difference based on hour:minute only (ignore date)
+    2. Find the closest hour range
+    3. Return ALL videos in that hour range, sorted by filename
+    """
     videos = get_video_files()
     if not videos:
         return []
 
-    # Determine target hour
-    if current_minute < 30:
-        target_hour = current_hour
-    else:
-        target_hour = (current_hour + 1) % 24
+    now = datetime.now()
+    print(f"[DEBUG] Current time: {now}, looking for videos near hour={current_hour}:{current_minute:02d}")
 
-    # Find videos for target hour
-    hour_videos = [v for v in videos if v['hour'] == target_hour]
+    # Calculate time difference for ALL videos based on hour:minute only (ignore date)
+    target_time_minutes = current_hour * 60 + current_minute
 
-    if hour_videos:
-        return hour_videos
+    for v in videos:
+        video_time_minutes = v['hour'] * 60 + v['minute']
+        # Calculate absolute difference in minutes
+        time_diff_minutes = abs(video_time_minutes - target_time_minutes)
+        v['time_diff_minutes'] = time_diff_minutes
 
-    # Fallback: find closest hour
-    available_hours = list(set(v['hour'] for v in videos))
-    if available_hours:
-        closest = min(available_hours, key=lambda h: abs(h - target_hour))
-        return [v for v in videos if v['hour'] == closest]
+    # Sort by time difference to find the closest hour
+    videos_sorted = sorted(videos, key=lambda x: x['time_diff_minutes'])
 
-    return videos[:6]
+    if not videos_sorted:
+        return []
+
+    # Get the closest time difference (in minutes)
+    closest_diff = videos_sorted[0]['time_diff_minutes']
+    print(f"[DEBUG] Closest time difference: {closest_diff} minutes")
+
+    # Get ALL videos within the same hour range (within 30 minutes of the closest)
+    # This ensures we get all videos from that hour across different dates
+    threshold_minutes = 30  # Videos within same hour (e.g., 17:00-17:30)
+
+    matching_videos = [v for v in videos if v['time_diff_minutes'] <= closest_diff + threshold_minutes]
+
+    print(f"[DEBUG] Found {len(matching_videos)} videos within {threshold_minutes} minutes of closest match")
+
+    # Sort by filename (this will group by date and time naturally)
+    matching_videos.sort(key=lambda x: x['name'])
+
+    # Log selected videos
+    for v in matching_videos[:5]:  # Show first 5
+        print(f"[DEBUG] - {v['name']} (hour={v['hour']}:{v['minute']:02d}, diff={v['time_diff_minutes']} min)")
+    if len(matching_videos) > 5:
+        print(f"[DEBUG] ... and {len(matching_videos) - 5} more videos")
+
+    return matching_videos
 
 
 def is_point_in_roi(point, roi_polygon):
@@ -637,15 +756,19 @@ def is_point_in_roi(point, roi_polygon):
 
 
 def get_class_color(class_name: str):
-    """Get color for vehicle class"""
+    """Get color for vehicle class - Model YOLO hanya punya 3 class: motorcycle, heavy, car"""
     class_lower = class_name.lower()
-    if 'car' in class_lower:
-        return (255, 100, 100)  # Blue
-    elif 'motor' in class_lower or 'bike' in class_lower:
-        return (100, 255, 100)  # Green
-    elif 'truck' in class_lower or 'bus' in class_lower:
-        return (100, 100, 255)  # Red
-    return (100, 200, 255)  # Orange
+
+    if 'motorcycle' in class_lower:
+        return (100, 255, 100)  # Green (BGR)
+    elif 'heavy' in class_lower:
+        return (100, 100, 255)  # Red (BGR)
+    elif 'car' in class_lower:
+        return (255, 100, 100)  # Blue (BGR)
+    else:
+        # Class tidak dikenali - log untuk debugging
+        print(f"   ⚠️  Unknown vehicle class: '{class_name}' (showing as ORANGE)")
+        return (0, 165, 255)  # Orange (BGR)
 
 
 def process_frame_with_detection(frame, yolo_model, roi_polygon, draw_stats=True):
@@ -880,6 +1003,9 @@ def generate_video_stream(video_path: str, with_detection: bool = True, file_hou
         if match:
             time_str = match.group(2)
             file_hour = int(time_str[:2])
+            print(f"[STREAM] Extracted file_hour from filename: {file_hour}")
+    else:
+        print(f"[STREAM] Using provided file_hour: {file_hour}")
 
     try:
         while True:
@@ -916,13 +1042,17 @@ def generate_video_stream(video_path: str, with_detection: bool = True, file_hou
                     ocr_hour_raw, ocr_minute_raw = ocr_result
                     hour_24, minute_24 = convert_12h_to_24h(ocr_hour_raw, ocr_minute_raw, file_hour)
 
+                    print(f"[OCR] Raw: {ocr_hour_raw}:{ocr_minute_raw:02d} (12h) | File hour: {file_hour} | Converted: {hour_24:02d}:{minute_24:02d} (24h)")
+
                     stream_state.last_known_hour = hour_24
                     stream_state.last_known_minute = minute_24
                     stream_state.ocr_text = f"{hour_24:02d}:{minute_24:02d}"
 
-                    # Cek apakah menit berubah - RESET counting DAN tracker
+                    # Cek apakah menit berubah - SAVE data then RESET counting DAN tracker
                     if stream_state.should_reset_counts(minute_24):
-                        print(f"[OCR] Menit berubah: {stream_state.current_minute:02d} -> {minute_24:02d}, RESET counting dan tracker!")
+                        print(f"[OCR] Menit berubah: {stream_state.current_minute:02d} -> {minute_24:02d}, SAVE data then RESET counting dan tracker!")
+                        # Save data before reset
+                        stream_state.save_current_minute_data(stream_state.last_known_hour, stream_state.current_minute)
                         stream_state.reset_for_new_minute()
 
                     stream_state.current_minute = minute_24
@@ -983,36 +1113,95 @@ async def list_videos():
     return {"success": True, "videos": videos}
 
 
+@app.get("/api/stream/data")
+async def get_stream_data(limit: int = 20):
+    """Get per-minute vehicle count data from current stream with DNN predictions"""
+    global stream_state
+
+    history = stream_state.get_minute_history(limit=limit)
+
+    # Calculate totals
+    total_car = sum(h['counts']['car'] for h in history)
+    total_motorcycle = sum(h['counts']['motorcycle'] for h in history)
+    total_heavy = sum(h['counts']['heavy'] for h in history)
+
+    return {
+        "success": True,
+        "current_time": stream_state.ocr_text,
+        "current_counts": stream_state.minute_counts,
+        "history": history,
+        "total_minutes": len(history),
+        "totals": {
+            "car": total_car,
+            "motorcycle": total_motorcycle,
+            "heavy": total_heavy,
+            "total": total_car + total_motorcycle + total_heavy
+        }
+    }
+
+
+def generate_multi_video_stream(video_list: list, with_detection: bool = True):
+    """
+    Generate stream that loops through multiple videos.
+    Videos will play in order and loop continuously.
+    """
+    if not video_list:
+        return
+
+    print(f"[MULTI-STREAM] Starting multi-video stream with {len(video_list)} videos")
+    for v in video_list:
+        print(f"[MULTI-STREAM] - {v['name']}")
+
+    video_index = 0
+
+    while True:
+        # Get current video
+        current_video = video_list[video_index]
+        video_path = current_video['path']
+        video_hour = current_video['hour']
+
+        print(f"[MULTI-STREAM] Playing video {video_index + 1}/{len(video_list)}: {current_video['name']}")
+
+        # Stream this video completely
+        try:
+            for frame_data in generate_video_stream(video_path, with_detection=with_detection, file_hour=video_hour):
+                yield frame_data
+        except Exception as e:
+            print(f"[MULTI-STREAM] Error streaming {current_video['name']}: {e}")
+
+        # Move to next video (loop back to start if at end)
+        video_index = (video_index + 1) % len(video_list)
+        print(f"[MULTI-STREAM] Moving to next video (index={video_index})")
+
+
 @app.get("/api/video/stream/{hour}")
 async def stream_video_by_hour(hour: int, detection: bool = True):
-    """Stream video for specific hour with YOLO detection"""
+    """Stream ALL videos for specific hour with YOLO detection (loops through all matching videos)"""
     now = datetime.now()
     videos = get_nearest_videos(hour, now.minute)
 
     if not videos:
         raise HTTPException(status_code=404, detail="No videos found")
 
-    video_path = videos[0]['path']
-
+    # Stream all matching videos in rotation
     return StreamingResponse(
-        generate_video_stream(video_path, with_detection=detection),
+        generate_multi_video_stream(videos, with_detection=detection),
         media_type='multipart/x-mixed-replace; boundary=frame'
     )
 
 
 @app.get("/api/video/current")
 async def stream_current_video(detection: bool = True):
-    """Stream video for current hour"""
+    """Stream ALL videos for current hour (loops through all matching videos)"""
     now = datetime.now()
     videos = get_nearest_videos(now.hour, now.minute)
 
     if not videos:
         raise HTTPException(status_code=404, detail="No videos found")
 
-    video_path = videos[0]['path']
-
+    # Stream all matching videos in rotation
     return StreamingResponse(
-        generate_video_stream(video_path, with_detection=detection),
+        generate_multi_video_stream(videos, with_detection=detection),
         media_type='multipart/x-mixed-replace; boundary=frame'
     )
 

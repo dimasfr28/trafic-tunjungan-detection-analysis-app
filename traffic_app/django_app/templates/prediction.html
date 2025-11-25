@@ -227,10 +227,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         const total = (result.counts.car || 0) + (result.counts.motorcycle || 0) + (result.counts.heavy || 0);
 
                         // Get density class for styling based on label
-                        // Class mapping from notebook:
+                        // Class mapping: 1=Lancar, 2=Padat, 3=Macet
                         // 1 = Lancar (Low/Smooth) -> Green
-                        // 2 = Macet (High/Congested) -> Red
-                        // 3 = Padat (Medium/Dense) -> Yellow
+                        // 2 = Padat (Medium/Dense) -> Yellow
+                        // 3 = Macet (High/Congested) -> Red
                         let densityClass = 'density-lancar';
                         const label = result.prediction.label.toLowerCase();
                         if (label === 'macet') densityClass = 'density-macet';

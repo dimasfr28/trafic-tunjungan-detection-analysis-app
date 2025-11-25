@@ -89,33 +89,47 @@
         </select>
     </div>
 
-    <!-- Charts Container 1 (2:1) -->
-    <div class="charts-row charts-2-1">
-        <div class="chart-card chart-large">
-            <h3>Traffic Density per Jam</h3>
-            <canvas id="lineChart"></canvas>
+    <!-- Charts Row 1: Traffic Density (8 cols) + Cluster Distribution (4 cols) -->
+    <div class="row charts-row g-3">
+        <div class="col-12 col-lg-8">
+            <div class="chart-card">
+                <h3>Traffic Density per Jam</h3>
+                <div style="position: relative;">
+                    <canvas id="lineChart"></canvas>
+                </div>
+            </div>
         </div>
-        <div class="chart-card chart-small">
-            <h3>Cluster Distribution</h3>
-            <canvas id="pieChart"></canvas>
+        <div class="col-12 col-lg-4">
+            <div class="chart-card">
+                <h3>Cluster Distribution</h3>
+                <div style="position: relative;">
+                    <canvas id="pieChart"></canvas>
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- Charts Container 2 (1:2) -->
-    <div class="charts-row charts-1-2">
-        <div class="chart-card chart-small">
-            <h3>Total Vehicles per Day</h3>
-            <canvas id="barChart"></canvas>
-        </div>
-        <div class="chart-card chart-large">
-            <h3>Traffic Intensity Heatmap (Hari x Jam)</h3>
-            <div class="heatmap-container">
-                <canvas id="heatmapChart"></canvas>
+    <!-- Charts Row 2: Total Vehicles (4 cols) + Heatmap (8 cols) -->
+    <div class="row charts-row g-3">
+        <div class="col-12 col-lg-4">
+            <div class="chart-card">
+                <h3>Total Vehicles per Day</h3>
+                <div style="position: relative;">
+                    <canvas id="barChart"></canvas>
+                </div>
             </div>
-            <div class="heatmap-legend">
-                <span class="legend-item"><span class="legend-color low"></span> Low (1)</span>
-                <span class="legend-item"><span class="legend-color medium"></span> Medium (2)</span>
-                <span class="legend-item"><span class="legend-color high"></span> High (3)</span>
+        </div>
+        <div class="col-12 col-lg-8">
+            <div class="chart-card">
+                <h3>Traffic Intensity Heatmap (Hari x Jam)</h3>
+                <div class="heatmap-container">
+                    <canvas id="heatmapChart"></canvas>
+                </div>
+                <div class="heatmap-legend">
+                    <span class="legend-item"><span class="legend-color low"></span> Low (1)</span>
+                    <span class="legend-item"><span class="legend-color medium"></span> Medium (2)</span>
+                    <span class="legend-item"><span class="legend-color high"></span> High (3)</span>
+                </div>
             </div>
         </div>
     </div>
@@ -204,7 +218,8 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: false,
+                maintainAspectRatio: true,
+                aspectRatio: 2.4,
                 plugins: {
                     legend: { position: 'top' }
                 },
@@ -241,7 +256,7 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: false,
+                maintainAspectRatio: true,
                 plugins: {
                     legend: { position: 'bottom' }
                 }
@@ -278,7 +293,8 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: false,
+                maintainAspectRatio: true,
+                aspectRatio: 1.1,
                 plugins: {
                     legend: { position: 'top' }
                 },
@@ -292,52 +308,89 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function updateHeatmap(heatmapData) {
         const canvas = document.getElementById('heatmapChart');
+        const container = canvas.parentElement;
         const ctx = canvas.getContext('2d');
 
-        // Clear previous
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Set canvas size based on container
+        const dpr = window.devicePixelRatio || 1;
+        const rect = container.getBoundingClientRect();
 
-        const cellWidth = (canvas.width - 60) / 24;
-        const cellHeight = (canvas.height - 40) / 7;
-        const offsetX = 50;
-        const offsetY = 20;
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        canvas.style.width = rect.width + 'px';
+        canvas.style.height = rect.height + 'px';
+
+        ctx.scale(dpr, dpr);
+
+        // Calculate dimensions
+        const padding = { top: 30, right: 20, bottom: 30, left: 60 };
+        const width = rect.width - padding.left - padding.right;
+        const height = rect.height - padding.top - padding.bottom;
+
+        const cellWidth = width / 24;
+        const cellHeight = height / 7;
+
+        // Clear canvas
+        ctx.clearRect(0, 0, rect.width, rect.height);
 
         // Draw cells
         heatmapData.data.forEach(cell => {
-            const x = offsetX + cell.x * cellWidth;
-            const y = offsetY + cell.y * cellHeight;
+            const x = padding.left + cell.x * cellWidth;
+            const y = padding.top + cell.y * cellHeight;
 
             // Color based on cluster
             let color;
             if (cell.cluster === 3) {
-                color = `rgba(255, 99, 132, ${0.5 + (cell.value / 1000) * 0.5})`;
+                color = `rgba(255, 99, 132, ${0.5 + Math.min(cell.value / 300, 0.5)})`;
             } else if (cell.cluster === 2) {
-                color = `rgba(255, 206, 86, ${0.5 + (cell.value / 1000) * 0.5})`;
+                color = `rgba(255, 206, 86, ${0.5 + Math.min(cell.value / 300, 0.5)})`;
             } else {
-                color = `rgba(75, 192, 192, ${0.3 + (cell.value / 1000) * 0.5})`;
+                color = `rgba(75, 192, 192, ${0.3 + Math.min(cell.value / 300, 0.5)})`;
             }
 
             ctx.fillStyle = color;
-            ctx.fillRect(x, y, cellWidth - 1, cellHeight - 1);
+            ctx.fillRect(x, y, cellWidth - 2, cellHeight - 2);
+
+            // Add border
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.strokeRect(x, y, cellWidth - 2, cellHeight - 2);
         });
 
         // Draw labels
-        ctx.fillStyle = '#666';
-        ctx.font = '10px Arial';
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '11px Inter, Arial, sans-serif';
+        ctx.textAlign = 'center';
 
-        // X labels (hours)
+        // X labels (hours) - show every 2 hours
         heatmapData.xLabels.forEach((label, i) => {
             if (i % 2 === 0) {
-                ctx.fillText(label, offsetX + i * cellWidth + 2, canvas.height - 5);
+                const x = padding.left + i * cellWidth + cellWidth / 2;
+                const y = rect.height - 10;
+                ctx.fillText(label, x, y);
             }
         });
 
         // Y labels (days)
-        ctx.font = '11px Arial';
+        ctx.textAlign = 'right';
+        ctx.font = '12px Inter, Arial, sans-serif';
         heatmapData.yLabels.forEach((label, i) => {
-            ctx.fillText(label.substring(0, 3), 5, offsetY + i * cellHeight + cellHeight / 2 + 4);
+            const x = padding.left - 10;
+            const y = padding.top + i * cellHeight + cellHeight / 2 + 4;
+            ctx.fillText(label.substring(0, 3), x, y);
         });
     }
+
+    // Resize heatmap on window resize
+    let resizeTimeout;
+    window.addEventListener('resize', function() {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(function() {
+            const daySelect = document.getElementById('daySelect');
+            if (daySelect) {
+                loadChartData(daySelect.value);
+            }
+        }, 250);
+    });
 
     // Event listeners
     document.getElementById('daySelect').addEventListener('change', function() {

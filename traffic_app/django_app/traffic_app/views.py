@@ -46,49 +46,84 @@ def get_nearest_time_bucket(current_time):
 
 
 def get_video_files():
-    """Get all video files from directory"""
+    """Get all video files from directory sorted by datetime"""
     video_dir = settings.VIDEO_DIR
     if not video_dir.exists():
         return []
 
     videos = []
     for f in video_dir.glob('*.mp4'):
-        # Parse datetime from filename: screen_recording_20251104_140237_seg2.mp4
+        # Parse datetime from filename: screen_recording_20251105_120456_seg2.mp4
+        # Format: YYYYMMDD_HHMMSS
         match = re.search(r'(\d{8})_(\d{6})', f.name)
         if match:
-            date_str = match.group(1)
-            time_str = match.group(2)
+            date_str = match.group(1)  # YYYYMMDD
+            time_str = match.group(2)  # HHMMSS
+
+            # Parse full datetime
+            year = int(date_str[:4])
+            month = int(date_str[4:6])
+            day = int(date_str[6:8])
             hour = int(time_str[:2])
             minute = int(time_str[2:4])
-            videos.append({
-                'path': str(f),
-                'name': f.name,
-                'hour': hour,
-                'minute': minute
-            })
+            second = int(time_str[4:6])
 
-    return sorted(videos, key=lambda x: (x['hour'], x['minute']))
+            try:
+                dt = datetime(year, month, day, hour, minute, second)
+                videos.append({
+                    'path': str(f),
+                    'name': f.name,
+                    'datetime': dt,
+                    'hour': hour,
+                    'minute': minute
+                })
+            except ValueError:
+                # Skip invalid dates
+                continue
+
+    # Sort by datetime (newest first)
+    return sorted(videos, key=lambda x: x['datetime'], reverse=True)
 
 
 def get_nearest_video(current_hour, current_minute):
-    """Get video nearest to current time"""
+    """
+    Get ALL videos with hour closest to current time (from all dates).
+    Strategy:
+    1. Calculate time difference based on hour:minute only (ignore date)
+    2. Find the closest hour range
+    3. Return ALL videos in that hour range, sorted by filename
+    """
     videos = get_video_files()
     if not videos:
         return None
 
-    # Find nearest hour
-    if current_minute < 30:
-        target_hour = current_hour
-    else:
-        target_hour = (current_hour + 1) % 24
+    # Calculate time difference for ALL videos based on hour:minute only (ignore date)
+    target_time_minutes = current_hour * 60 + current_minute
 
-    # Find videos for target hour
-    hour_videos = [v for v in videos if v['hour'] == target_hour]
-    if hour_videos:
-        return hour_videos
+    for v in videos:
+        video_time_minutes = v['hour'] * 60 + v['minute']
+        # Calculate absolute difference in minutes
+        time_diff_minutes = abs(video_time_minutes - target_time_minutes)
+        v['time_diff_minutes'] = time_diff_minutes
 
-    # Fallback to any available videos
-    return videos[:6] if len(videos) >= 6 else videos
+    # Sort by time difference to find the closest hour
+    videos_sorted = sorted(videos, key=lambda x: x['time_diff_minutes'])
+
+    if not videos_sorted:
+        return None
+
+    # Get the closest time difference (in minutes)
+    closest_diff = videos_sorted[0]['time_diff_minutes']
+
+    # Get ALL videos within the same hour range (within 30 minutes of the closest)
+    threshold_minutes = 30
+
+    matching_videos = [v for v in videos if v['time_diff_minutes'] <= closest_diff + threshold_minutes]
+
+    # Sort by filename (this will group by date and time naturally)
+    matching_videos.sort(key=lambda x: x['name'])
+
+    return matching_videos
 
 
 def home(request):

@@ -19,7 +19,11 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip3 install --no-cache-dir --timeout 3600 --retries 10 -r requirements.txt
+# Install heavy packages first to avoid re-download on failure
+RUN pip3 install --no-cache-dir --timeout 7200 torch==2.1.0 || \
+    pip3 install --no-cache-dir --timeout 7200 torch==2.1.0
+RUN pip3 install --no-cache-dir --timeout 3600 torchvision==0.16.0
+RUN pip3 install --no-cache-dir --timeout 3600 -r requirements.txt
 
 COPY . .
 
